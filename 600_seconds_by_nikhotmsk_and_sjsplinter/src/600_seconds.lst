@@ -1,0 +1,4107 @@
+# file opened: 600_seconds.asm
+   1  0000              ;
+   2  0000              ; A screen timer (remake) from a famous late Soviet Union TV show
+   3  0000              ;
+   4  0000              ; https://en.wikipedia.org/wiki/600_Seconds
+   5  0000              ;
+   6  0000              ; code : nikhotmsk
+   7  0000              ; music & gfx : Cj-Splinter
+   8  0000              ; target demoparty : cc 2024
+   9  0000              ; group : undefined admins
+  10  0000              ;
+  11  0000              ; 2024.08.16 19:54 gmt+3
+  12  0000              ;
+  13  0000
+  14  0000
+  15  0000              ; use this command to compile this thing:
+  16  0000              ; sjasmplus 600.asm --lst=600.lst --sym=600.sym
+  17  0000              ;
+  18  0000
+  19  0000              DOTS_MAX:						EQU 175
+  20  0000              stored_paging_byte_address:		EQU $5b5c
+  21  0000
+  22  0000              	DEVICE ZXSPECTRUM128
+  23  0000
+  24  0000              	org $8000
+  25  8000
+  26  8000              start_demo:
+  27  8000 3E 00        	ld a, 0
+  28  8002 D3 FE        	out (254), a ; border black
+  29  8004
+  30  8004 F3           	di
+  31  8005 21 7F 9D     	ld hl, machine_stack_end
+  32  8008 F9           	ld sp, hl
+  33  8009
+  34  8009              	; find the page that was active at boot and place it to player_page
+  35  8009 3A 5C 5B     	ld a, (stored_paging_byte_address) ; which is $5b5c (23388)
+  36  800C E6 07        	and 0b00000111
+  37  800E 32 95 9C     	ld (player_page), a
+  38  8011
+  39  8011              	; init memory
+  40  8011 21 20 94     	ld hl, code_end
+  41  8014 16 00        	ld d, 0
+  42  8016 01 DF 08     	ld bc, variables_end - code_end
+  43  8019 CD 23 86     	call fill_mem
+  44  801C
+  45  801C 01 AF 00     	ld bc, DOTS_MAX
+  46  801F 21 91 9C     	ld hl, point_beyond_screen_0
+  47  8022 DD 21 20 94  	ld ix, screen_0_array
+  48  8026 11 03 00     	ld de, 3
+  49  8029              init_arrays_loop1:
+  50  8029 DD 75 00 DD  	ld (ix+0), hl ; all unused points will point outside of screen
+  50  802D 74 01
+  51  802F DD 19        	add ix, de
+  52  8031 0B           	dec bc
+  53  8032 78           	ld a, b
+  54  8033 B1           	or c
+  55  8034 20 F3        	jr nz, init_arrays_loop1
+  56  8036
+  57  8036 01 AF 00     	ld bc, DOTS_MAX
+  58  8039 21 92 9C     	ld hl, point_beyond_screen_1
+  59  803C DD 21 A8 96  	ld ix, screen_1_array ; same for shadow screen
+  60  8040 11 03 00     	ld de, 3
+  61  8043              init_arrays_loop2:
+  62  8043 DD 75 00 DD  	ld (ix+0), hl
+  62  8047 74 01
+  63  8049 DD 19        	add ix, de
+  64  804B 0B           	dec bc
+  65  804C 78           	ld a, b
+  66  804D B1           	or c
+  67  804E 20 F3        	jr nz, init_arrays_loop2
+  68  8050
+  69  8050 C3 7C 84     	jp start_demo_continued
+  70  8053
+  71  8053              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  72  8053              ; interrupt routine
+  73  8053              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  74  8053              	org #8080 ; interrupt routine here
+  75  8080 F5           	push af
+  76  8081 3A 0B 94     	ld a, (clock_counter_5)
+  77  8084 3C           	inc a
+  78  8085 32 0B 94     	ld (clock_counter_5), a
+  79  8088 3A 0A 94     	ld a, (nested)
+  80  808B B7           	or a
+  81  808C C2 C9 82     	jp nz, interrupt_quit_nested
+  82  808F              	;ld a, 1
+  83  808F              	;out (254), a ; border blue
+  84  808F E5           	push hl
+  85  8090 D5           	push de
+  86  8091 C5           	push bc
+  87  8092 DD E5        	push ix
+  88  8094 FD E5        	push iy
+  89  8096
+  90  8096 3E 01        	ld a, 1
+  91  8098 32 0A 94     	ld (nested), a
+  92  809B FB           	ei
+  93  809C
+  94  809C 3A 90 9C     	ld a, (screen_selector)
+  95  809F B7           	or a
+  96  80A0 20 1E        	jr nz, screen_selector_do_1
+  97  80A2              	; selector is 0
+  98  80A2 3E 08        	ld a, 8 ; display shadow screen, write to primary screen
+  99  80A4 DD 21 35 82  	ld ix, modified_code_1
+ 100  80A8 21 91 9C     	ld hl, point_beyond_screen_0
+ 101  80AB DD 75 01 DD  	ld (ix+1), hl
+ 101  80AF 74 02
+ 102  80B1 DD 21 56 82  	ld ix, modified_code_2
+ 103  80B5 21 00 58     	ld hl, 0x5800
+ 104  80B8 DD 75 01 DD  	ld (ix+1), hl
+ 104  80BC 74 02
+ 105  80BE 18 1C        	jr screen_selector_done
+ 106  80C0              screen_selector_do_1:
+ 107  80C0              	; selector is 1
+ 108  80C0 3E 00        	ld a, 0 ; display primary screen, write to shadow screen
+ 109  80C2 DD 21 35 82  	ld ix, modified_code_1
+ 110  80C6 21 92 9C     	ld hl, point_beyond_screen_1
+ 111  80C9 DD 75 01 DD  	ld (ix+1), hl
+ 111  80CD 74 02
+ 112  80CF DD 21 56 82  	ld ix, modified_code_2
+ 113  80D3 21 00 D8     	ld hl, 0xd800
+ 114  80D6 DD 75 01 DD  	ld (ix+1), hl
+ 114  80DA 74 02
+ 115  80DC              screen_selector_done:
+ 116  80DC 32 96 9C     	ld (flip_mask), a
+ 117  80DF
+ 118  80DF              	; ld a, (flip_mask)
+ 119  80DF 6F           	ld l, a
+ 120  80E0 3E 07        	ld a, 7 ; select page 7
+ 121  80E2              	;and 0b00000111
+ 122  80E2 B5           	or l
+ 123  80E3 F6 10        	or 16
+ 124  80E5 01 FD 7F     	ld bc, #7ffd
+ 125  80E8 ED 79        	out (c),a ; switch page and shadow screen
+ 126  80EA              	; this is interrupt code, no need to store the page byte
+ 127  80EA
+ 128  80EA 3A 0D 94     	ld a, (clock_changed_draw)
+ 129  80ED B7           	or a
+ 130  80EE              	;jp z, interrupt_no_draw ; this is for 48k compatibility
+ 131  80EE 3E 00        	ld a, 0 ; todo figure out screen selector
+ 132  80F0 32 0D 94     	ld (clock_changed_draw), a
+ 133  80F3
+ 134  80F3              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 135  80F3              	; interrupt erase array (replace by background)
+ 136  80F3              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 137  80F3 3A 90 9C     	ld a, (screen_selector)
+ 138  80F6 B7           	or a
+ 139  80F7 20 0C        	jr nz, erase_array_s_1
+ 140  80F9              	; selector is 0
+ 141  80F9 DD 21 2D 96  	ld ix, screen_0_array + (DOTS_MAX * 3)
+ 142  80FD 11 DF 99     	ld de, screen_0_background + DOTS_MAX
+ 143  8100 21 93 9C     	ld hl, screen_0_drawing_ok
+ 144  8103 18 0A        	jr erase_array_s_done
+ 145  8105              erase_array_s_1:
+ 146  8105              	; selector is 1
+ 147  8105 DD 21 B5 98  	ld ix, screen_1_array + (DOTS_MAX * 3)
+ 148  8109 11 B7 9A     	ld de, screen_1_background + DOTS_MAX
+ 149  810C 21 94 9C     	ld hl, screen_1_drawing_ok
+ 150  810F              erase_array_s_done:
+ 151  810F 01 AF 00     	ld bc, DOTS_MAX
+ 152  8112 7E           	ld a, (hl)
+ 153  8113 B7           	or a
+ 154  8114 C4 45 86     	call nz, drawing_code_reverse
+ 155  8117
+ 156  8117              	;ld a, 2
+ 157  8117              	;out (254), a ; border red
+ 158  8117
+ 159  8117              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 160  8117              	; scrapper
+ 161  8117              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 162  8117 2A 1A 94     	ld hl, (scrapper_timer)
+ 163  811A 2B           	dec hl
+ 164  811B 7C           	ld a, h
+ 165  811C B5           	or l
+ 166  811D 20 03        	jr nz, scrapper_timer_skip_1
+ 167  811F 21 20 03     	ld hl, 800 ; timer set here
+ 168  8122              scrapper_timer_skip_1:
+ 169  8122 22 1A 94     	ld (scrapper_timer), hl
+ 170  8125
+ 171  8125 11 50 00     	ld de, 80
+ 172  8128 B7           	or a ; clear carry
+ 173  8129 ED 52        	sbc hl, de
+ 174  812B 19           	add hl, de
+ 175  812C 30 26        	jr nc, scrapper_skip_altogether
+ 176  812E
+ 177  812E 06 64        	ld b, 100
+ 178  8130              scrapper_loop:
+ 179  8130 2A 18 94     	ld hl, (scrapper_pos)
+ 180  8133 3E 00        	ld a, 0
+ 181  8135 77           	ld (hl), a ; scrap part of screen
+ 182  8136 CB FC        	set 7, h
+ 183  8138 77           	ld (hl), a ; same for shadow screen
+ 184  8139 CB BC        	res 7, h
+ 185  813B 11 77 00     	ld de, 119
+ 186  813E 19           	add hl, de
+ 187  813F 11 00 58     	ld de, 0x5800 ; end of drawable area
+ 188  8142 B7           	or a ; drop carry
+ 189  8143 ED 52        	sbc hl, de
+ 190  8145 19           	add hl, de
+ 191  8146 38 06        	jr c, scrapper_skip_1
+ 192  8148 11 00 18     	ld de, 0x1800
+ 193  814B B7 ED 52     	sub hl, de
+ 194  814E              scrapper_skip_1:
+ 195  814E 22 18 94     	ld (scrapper_pos), hl
+ 196  8151 05           	dec b
+ 197  8152 20 DC        	jr nz, scrapper_loop
+ 198  8154
+ 199  8154              scrapper_skip_altogether:
+ 200  8154
+ 201  8154              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 202  8154              	; draw color lines
+ 203  8154              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 204  8154
+ 205  8154              	; Draw Line routine
+ 206  8154              	; B = Y pixel position 1
+ 207  8154              	; C = X pixel position 1
+ 208  8154              	; D = Y pixel position 2
+ 209  8154              	; E = X pixel position 2
+ 210  8154
+ 211  8154 2A 15 94     	ld hl, (draw_color_lines_vector)
+ 212  8157 EB           	ex hl, de
+ 213  8158 2A 12 94     	ld hl, (draw_color_lines_running_point)
+ 214  815B 44 4D        	ld bc, hl
+ 215  815D 7C           	ld a, h
+ 216  815E 82           	add d
+ 217  815F 67           	ld h, a
+ 218  8160              	; vertical overflow detection
+ 219  8160 E6 C0        	and 0b11000000
+ 220  8162 FE C0        	cp 0b11000000
+ 221  8164 20 05        	jr nz, draw_color_lines_vertical_overflow_as_is
+ 222  8166 CD 01 84     	call interrupt_new_vector
+ 223  8169 18 11        	jr draw_color_lines_new_vector_ready
+ 224  816B              draw_color_lines_vertical_overflow_as_is:
+ 225  816B 7D           	ld a, l
+ 226  816C 83           	add e
+ 227  816D 6F           	ld l, a
+ 228  816E              	; horisontal overflow detection
+ 229  816E 38 07        	jr c, draw_color_lines_horizontal_carry_set
+ 230  8170              	; carry flag not set
+ 231  8170 CB 7B        	bit 7, e
+ 232  8172 C4 01 84     	call nz, interrupt_new_vector
+ 233  8175 18 05        	jr draw_color_lines_horizontal_carry_set_ready
+ 234  8177              draw_color_lines_horizontal_carry_set:
+ 235  8177              	; carry flag set
+ 236  8177 CB 7B        	bit 7, e
+ 237  8179 CC 01 84     	call z, interrupt_new_vector
+ 238  817C
+ 239  817C              draw_color_lines_horizontal_carry_set_ready:
+ 240  817C              draw_color_lines_new_vector_ready:
+ 241  817C 22 12 94     	ld (draw_color_lines_running_point), hl
+ 242  817F EB           	ex hl, de
+ 243  8180 CD A3 87     	call Draw_Line
+ 244  8183
+ 245  8183
+ 246  8183              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 247  8183              	; apply color_queue
+ 248  8183              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 249  8183 06 20        	ld b, 32
+ 250  8185 11 03 00     	ld de, 3
+ 251  8188 DD 21 9E 9C  	ld ix, color_queue
+ 252  818C              apply_color_queue_loop:
+ 253  818C
+ 254  818C DD 6E 00 DD  	ld hl, (ix+0)
+ 254  8190 66 01
+ 255  8192 7C           	ld a, h
+ 256  8193 B7           	or a
+ 257  8194 28 2A        	jr z, apply_color_queue_next ; this entry is inactive
+ 258  8196 3A 90 9C     	ld a, (screen_selector)
+ 259  8199 B7           	or a
+ 260  819A 28 13        	jr z, apply_color_queue_screen_0
+ 261  819C CB 7C        	bit 7, h
+ 262  819E 28 20        	jr z, apply_color_queue_next ; leave the entry in queue for next time
+ 263  81A0 DD 7E 02     	ld a, (ix+2)
+ 264  81A3 77           	ld (hl), a ; write color
+ 265  81A4 21 00 00     	ld hl, 0
+ 266  81A7 DD 75 00 DD  	ld (ix+0), hl ; mark entry as empty
+ 266  81AB 74 01
+ 267  81AD 18 11        	jr apply_color_queue_next
+ 268  81AF              apply_color_queue_screen_0:
+ 269  81AF CB 7C        	bit 7, h
+ 270  81B1 20 0D        	jr nz, apply_color_queue_next ; leave the entry in queue for next time
+ 271  81B3 DD 7E 02     	ld a, (ix+2)
+ 272  81B6 77           	ld (hl), a ; write color
+ 273  81B7 21 00 00     	ld hl, 0
+ 274  81BA DD 75 00 DD  	ld (ix+0), hl ; mark entry as empty
+ 274  81BE 74 01
+ 275  81C0              apply_color_queue_next:
+ 276  81C0 DD 19        	add ix, de
+ 277  81C2 05           	dec b
+ 278  81C3 20 C7        	jr nz, apply_color_queue_loop
+ 279  81C5
+ 280  81C5              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 281  81C5              	; interrupt load clock
+ 282  81C5              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 283  81C5
+ 284  81C5 3A 9D 9C     	ld a, (rotat_x_increment)
+ 285  81C8 CB 7F        	bit 7, a
+ 286  81CA 20 11        	jr nz, load_clock_rotat_x_neg
+ 287  81CC              	; increment is positive
+ 288  81CC 3A 9B 9C     	ld a, (rotat_x_angle)
+ 289  81CF FE 13        	cp 19 ; size of rotat matrix here
+ 290  81D1 38 15        	jr c, load_clock_rotat_x_as_is
+ 291  81D3 3A 9D 9C     	ld a, (rotat_x_increment)
+ 292  81D6 ED 44        	neg
+ 293  81D8 32 9D 9C     	ld (rotat_x_increment), a
+ 294  81DB 18 0B        	jr load_clock_rotat_x_as_is
+ 295  81DD              load_clock_rotat_x_neg:
+ 296  81DD              	; increment is negative
+ 297  81DD 3A 9B 9C     	ld a, (rotat_x_angle)
+ 298  81E0 B7           	or a ; detect null
+ 299  81E1 20 05        	jr nz, load_clock_rotat_x_as_is
+ 300  81E3              	;ld a, (rotat_x_increment)
+ 301  81E3              	;neg
+ 302  81E3 3E 00        	ld a, 0
+ 303  81E5 32 9D 9C     	ld (rotat_x_increment), a
+ 304  81E8
+ 305  81E8              load_clock_rotat_x_as_is:
+ 306  81E8 3A 9B 9C     	ld a, (rotat_x_angle)
+ 307  81EB 57           	ld d, a
+ 308  81EC 3A 9D 9C     	ld a, (rotat_x_increment)
+ 309  81EF 82           	add d
+ 310  81F0 32 9B 9C     	ld (rotat_x_angle), a ; apply rotation step
+ 311  81F3
+ 312  81F3 01 AF 00     	ld bc, DOTS_MAX
+ 313  81F6
+ 314  81F6 21 5A 91     	ld hl, rotat_x
+ 315  81F9 3A 9B 9C     	ld a, (rotat_x_angle)
+ 316  81FC 5F           	ld e, a
+ 317  81FD 16 00        	ld d, 0
+ 318  81FF B7           	or a ; clear carry
+ 319  8200 CB 13        	rl e
+ 320  8202 CB 12        	rl d
+ 321  8204 CB 13        	rl e
+ 322  8206 CB 12        	rl d
+ 323  8208 CB 13        	rl e
+ 324  820A CB 12        	rl d
+ 325  820C CB 13        	rl e
+ 326  820E CB 12        	rl d
+ 327  8210 CB 13        	rl e
+ 328  8212 CB 12        	rl d
+ 329  8214 19           	add hl, de
+ 330  8215 22 97 9C     	ld (rotat_x_selected), hl
+ 331  8218 21 DA 93     	ld hl, rotat_y
+ 332  821B 22 99 9C     	ld (rotat_y_selected), hl
+ 333  821E
+ 334  821E 21 20 94     	ld hl, screen_0_array ; [hl] [enable]
+ 335  8221 D9           	exx
+ 336  8222 21 E0 9A     	ld hl, clock_points_array ; [hl]
+ 337  8225 D9           	exx
+ 338  8226 3A 90 9C     	ld a, (screen_selector)
+ 339  8229 B7           	or a
+ 340  822A 28 03        	jr z, load_clock_s_0
+ 341  822C 21 A8 96     	ld hl, screen_1_array
+ 342  822F              load_clock_s_0:
+ 343  822F
+ 344  822F              	; hl - screen array
+ 345  822F              	; shadow hl - clock points
+ 346  822F
+ 347  822F              interrupt_load_clock_loop:
+ 348  822F D9           	exx ; switch shadow registers
+ 349  8230 7E           	ld a, (hl) ; just check if point is enabled
+ 350  8231 D9           	exx
+ 351  8232 B7           	or a
+ 352  8233 20 09        	jr nz, interrupt_load_clock_dot_enabled
+ 353  8235              modified_code_1:
+ 354  8235 11 00 00     	ld de, 0 ; point_beyond_screen_0 or point_beyond_screen_1
+ 355  8238 73 23 72 2B  	ld (hl), de
+ 356  823C 18 2C        	jr interrupt_load_clock_dot_disabled
+ 357  823E
+ 358  823E              interrupt_load_clock_dot_enabled:
+ 359  823E DD 2A 97 9C  	ld ix, (rotat_x_selected)
+ 360  8242 FD 2A 99 9C  	ld iy, (rotat_y_selected)
+ 361  8246 D9           	exx
+ 362  8247 7E           	ld a, (hl) ; read LSB (horisontal pos)
+ 363  8248 16 00        	ld d, 0
+ 364  824A 5F           	ld e, a
+ 365  824B DD 19        	add ix, de
+ 366  824D 23           	inc hl
+ 367  824E 7E           	ld a, (hl) ; read vertical pos
+ 368  824F 5F           	ld e, a
+ 369  8250 FD 19        	add iy, de
+ 370  8252 FD 19        	add iy, de ; yes, two times
+ 371  8254 2B           	dec hl
+ 372  8255 D9           	exx
+ 373  8256              modified_code_2:
+ 374  8256 11 00 58     	ld de, 0x5800 ; or 0xd800
+ 375  8259 7B           	ld a, e
+ 376  825A DD 86 00     	add a, (ix+0)
+ 377  825D FD 86 00     	add a, (iy+0)
+ 378  8260 5F           	ld e, a
+ 379  8261 7A           	ld a, d
+ 380  8262 FD 8E 01     	adc a, (iy+1)
+ 381  8265 57           	ld d, a
+ 382  8266 73 23 72 2B  	ld (hl), de
+ 383  826A              	; attr pointer should be ready now
+ 384  826A              interrupt_load_clock_dot_disabled:
+ 385  826A 23           	inc hl
+ 386  826B 23           	inc hl
+ 387  826C 23           	inc hl
+ 388  826D D9           	exx
+ 389  826E 23           	inc hl
+ 390  826F 23           	inc hl
+ 391  8270 D9           	exx
+ 392  8271 0B           	dec bc
+ 393  8272 78           	ld a, b
+ 394  8273 B1           	or c
+ 395  8274 20 B9        	jr nz, interrupt_load_clock_loop
+ 396  8276
+ 397  8276              	;ld ix, screen_0_array
+ 398  8276              	;ld hl, 0x5803
+ 399  8276              	;ld (ix), hl
+ 400  8276              	;ld (ix+2), 1
+ 401  8276
+ 402  8276              	;ld a, 4
+ 403  8276              	;out (254), a ; border green
+ 404  8276
+ 405  8276              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 406  8276              	; interrupt draw array
+ 407  8276              	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 408  8276 3A 90 9C     	ld a, (screen_selector)
+ 409  8279 B7           	or a
+ 410  827A 20 09        	jr nz, draw_array_s_1
+ 411  827C              	; selector is 0
+ 412  827C DD 21 20 94  	ld ix, screen_0_array
+ 413  8280 11 30 99     	ld de, screen_0_background
+ 414  8283 18 07        	jr draw_array_s_done
+ 415  8285              draw_array_s_1:
+ 416  8285              	; selector is 1
+ 417  8285 DD 21 A8 96  	ld ix, screen_1_array
+ 418  8289 11 08 9A     	ld de, screen_1_background
+ 419  828C              draw_array_s_done:
+ 420  828C 01 AF 00     	ld bc, DOTS_MAX
+ 421  828F CD 2C 86     	call drawing_code
+ 422  8292
+ 423  8292 3A 90 9C     	ld a, (screen_selector)
+ 424  8295 B7           	or a
+ 425  8296 20 05        	jr nz, ok_mark_s_1
+ 426  8298              	; selector is 0
+ 427  8298 21 93 9C     	ld hl, screen_0_drawing_ok
+ 428  829B 18 03        	jr ok_mark_s_done
+ 429  829D              ok_mark_s_1:
+ 430  829D              	; selector is 1
+ 431  829D 21 94 9C     	ld hl, screen_1_drawing_ok
+ 432  82A0              ok_mark_s_done:
+ 433  82A0 3E 01        	ld a, 1
+ 434  82A2 77           	ld (hl), a
+ 435  82A3
+ 436  82A3              interrupt_no_draw:
+ 437  82A3
+ 438  82A3 3A 90 9C     	ld a, (screen_selector)
+ 439  82A6 EE 01        	xor 0b00000001
+ 440  82A8 32 90 9C     	ld (screen_selector), a
+ 441  82AB
+ 442  82AB F3           	di
+ 443  82AC 3E 00        	ld a, 0
+ 444  82AE 32 0A 94     	ld (nested), a
+ 445  82B1
+ 446  82B1 3A 96 9C     	ld a, (flip_mask)
+ 447  82B4 6F           	ld l, a
+ 448  82B5 3A 5C 5B     	ld a, (stored_paging_byte_address)
+ 449  82B8 E6 F7        	and 0b11110111
+ 450  82BA B5           	or l
+ 451  82BB F6 10        	or 16 ; basic48
+ 452  82BD 01 FD 7F     	ld bc, #7ffd
+ 453  82C0 ED 79        	out (c),a ; restore page as it was before interrupt
+ 454  82C2
+ 455  82C2 FD E1        	pop iy
+ 456  82C4 DD E1        	pop ix
+ 457  82C6 C1           	pop bc
+ 458  82C7 D1           	pop de
+ 459  82C8 E1           	pop hl
+ 460  82C9              	;ld a, 0
+ 461  82C9              	;out (254), a ; border black again
+ 462  82C9              interrupt_quit_nested:
+ 463  82C9 F1           	pop af
+ 464  82CA FB           	ei
+ 465  82CB C9           	ret
+ 466  82CC
+ 467  82CC              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 468  82CC              ; interrupt table
+ 469  82CC              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 470  82CC 00 00 00...  	ALIGN 256 ; hardcoded interrupt table here
+ 471  8300              im2_interrupt_block:
+ 472  8300 80          > BYTE #80 ; size 257 bytes
+ 472  8301 80          > BYTE #80
+ 472  8302 80          > BYTE #80
+ 472  8303 80          > BYTE #80
+ 472  8304 80          > BYTE #80
+ 472  8305 80          > BYTE #80
+ 472  8306 80          > BYTE #80
+ 472  8307 80          > BYTE #80
+ 472  8308 80          > BYTE #80
+ 472  8309 80          > BYTE #80
+ 472  830A 80          > BYTE #80
+ 472  830B 80          > BYTE #80
+ 472  830C 80          > BYTE #80
+ 472  830D 80          > BYTE #80
+ 472  830E 80          > BYTE #80
+ 472  830F 80          > BYTE #80
+ 472  8310 80          > BYTE #80
+ 472  8311 80          > BYTE #80
+ 472  8312 80          > BYTE #80
+ 472  8313 80          > BYTE #80
+ 472  8314 80          > BYTE #80
+ 472  8315 80          > BYTE #80
+ 472  8316 80          > BYTE #80
+ 472  8317 80          > BYTE #80
+ 472  8318 80          > BYTE #80
+ 472  8319 80          > BYTE #80
+ 472  831A 80          > BYTE #80
+ 472  831B 80          > BYTE #80
+ 472  831C 80          > BYTE #80
+ 472  831D 80          > BYTE #80
+ 472  831E 80          > BYTE #80
+ 472  831F 80          > BYTE #80
+ 472  8320 80          > BYTE #80
+ 472  8321 80          > BYTE #80
+ 472  8322 80          > BYTE #80
+ 472  8323 80          > BYTE #80
+ 472  8324 80          > BYTE #80
+ 472  8325 80          > BYTE #80
+ 472  8326 80          > BYTE #80
+ 472  8327 80          > BYTE #80
+ 472  8328 80          > BYTE #80
+ 472  8329 80          > BYTE #80
+ 472  832A 80          > BYTE #80
+ 472  832B 80          > BYTE #80
+ 472  832C 80          > BYTE #80
+ 472  832D 80          > BYTE #80
+ 472  832E 80          > BYTE #80
+ 472  832F 80          > BYTE #80
+ 472  8330 80          > BYTE #80
+ 472  8331 80          > BYTE #80
+ 472  8332 80          > BYTE #80
+ 472  8333 80          > BYTE #80
+ 472  8334 80          > BYTE #80
+ 472  8335 80          > BYTE #80
+ 472  8336 80          > BYTE #80
+ 472  8337 80          > BYTE #80
+ 472  8338 80          > BYTE #80
+ 472  8339 80          > BYTE #80
+ 472  833A 80          > BYTE #80
+ 472  833B 80          > BYTE #80
+ 472  833C 80          > BYTE #80
+ 472  833D 80          > BYTE #80
+ 472  833E 80          > BYTE #80
+ 472  833F 80          > BYTE #80
+ 472  8340 80          > BYTE #80
+ 472  8341 80          > BYTE #80
+ 472  8342 80          > BYTE #80
+ 472  8343 80          > BYTE #80
+ 472  8344 80          > BYTE #80
+ 472  8345 80          > BYTE #80
+ 472  8346 80          > BYTE #80
+ 472  8347 80          > BYTE #80
+ 472  8348 80          > BYTE #80
+ 472  8349 80          > BYTE #80
+ 472  834A 80          > BYTE #80
+ 472  834B 80          > BYTE #80
+ 472  834C 80          > BYTE #80
+ 472  834D 80          > BYTE #80
+ 472  834E 80          > BYTE #80
+ 472  834F 80          > BYTE #80
+ 472  8350 80          > BYTE #80
+ 472  8351 80          > BYTE #80
+ 472  8352 80          > BYTE #80
+ 472  8353 80          > BYTE #80
+ 472  8354 80          > BYTE #80
+ 472  8355 80          > BYTE #80
+ 472  8356 80          > BYTE #80
+ 472  8357 80          > BYTE #80
+ 472  8358 80          > BYTE #80
+ 472  8359 80          > BYTE #80
+ 472  835A 80          > BYTE #80
+ 472  835B 80          > BYTE #80
+ 472  835C 80          > BYTE #80
+ 472  835D 80          > BYTE #80
+ 472  835E 80          > BYTE #80
+ 472  835F 80          > BYTE #80
+ 472  8360 80          > BYTE #80
+ 472  8361 80          > BYTE #80
+ 472  8362 80          > BYTE #80
+ 472  8363 80          > BYTE #80
+ 472  8364 80          > BYTE #80
+ 472  8365 80          > BYTE #80
+ 472  8366 80          > BYTE #80
+ 472  8367 80          > BYTE #80
+ 472  8368 80          > BYTE #80
+ 472  8369 80          > BYTE #80
+ 472  836A 80          > BYTE #80
+ 472  836B 80          > BYTE #80
+ 472  836C 80          > BYTE #80
+ 472  836D 80          > BYTE #80
+ 472  836E 80          > BYTE #80
+ 472  836F 80          > BYTE #80
+ 472  8370 80          > BYTE #80
+ 472  8371 80          > BYTE #80
+ 472  8372 80          > BYTE #80
+ 472  8373 80          > BYTE #80
+ 472  8374 80          > BYTE #80
+ 472  8375 80          > BYTE #80
+ 472  8376 80          > BYTE #80
+ 472  8377 80          > BYTE #80
+ 472  8378 80          > BYTE #80
+ 472  8379 80          > BYTE #80
+ 472  837A 80          > BYTE #80
+ 472  837B 80          > BYTE #80
+ 472  837C 80          > BYTE #80
+ 472  837D 80          > BYTE #80
+ 472  837E 80          > BYTE #80
+ 472  837F 80          > BYTE #80
+ 472  8380 80          > BYTE #80
+ 472  8381 80          > BYTE #80
+ 472  8382 80          > BYTE #80
+ 472  8383 80          > BYTE #80
+ 472  8384 80          > BYTE #80
+ 472  8385 80          > BYTE #80
+ 472  8386 80          > BYTE #80
+ 472  8387 80          > BYTE #80
+ 472  8388 80          > BYTE #80
+ 472  8389 80          > BYTE #80
+ 472  838A 80          > BYTE #80
+ 472  838B 80          > BYTE #80
+ 472  838C 80          > BYTE #80
+ 472  838D 80          > BYTE #80
+ 472  838E 80          > BYTE #80
+ 472  838F 80          > BYTE #80
+ 472  8390 80          > BYTE #80
+ 472  8391 80          > BYTE #80
+ 472  8392 80          > BYTE #80
+ 472  8393 80          > BYTE #80
+ 472  8394 80          > BYTE #80
+ 472  8395 80          > BYTE #80
+ 472  8396 80          > BYTE #80
+ 472  8397 80          > BYTE #80
+ 472  8398 80          > BYTE #80
+ 472  8399 80          > BYTE #80
+ 472  839A 80          > BYTE #80
+ 472  839B 80          > BYTE #80
+ 472  839C 80          > BYTE #80
+ 472  839D 80          > BYTE #80
+ 472  839E 80          > BYTE #80
+ 472  839F 80          > BYTE #80
+ 472  83A0 80          > BYTE #80
+ 472  83A1 80          > BYTE #80
+ 472  83A2 80          > BYTE #80
+ 472  83A3 80          > BYTE #80
+ 472  83A4 80          > BYTE #80
+ 472  83A5 80          > BYTE #80
+ 472  83A6 80          > BYTE #80
+ 472  83A7 80          > BYTE #80
+ 472  83A8 80          > BYTE #80
+ 472  83A9 80          > BYTE #80
+ 472  83AA 80          > BYTE #80
+ 472  83AB 80          > BYTE #80
+ 472  83AC 80          > BYTE #80
+ 472  83AD 80          > BYTE #80
+ 472  83AE 80          > BYTE #80
+ 472  83AF 80          > BYTE #80
+ 472  83B0 80          > BYTE #80
+ 472  83B1 80          > BYTE #80
+ 472  83B2 80          > BYTE #80
+ 472  83B3 80          > BYTE #80
+ 472  83B4 80          > BYTE #80
+ 472  83B5 80          > BYTE #80
+ 472  83B6 80          > BYTE #80
+ 472  83B7 80          > BYTE #80
+ 472  83B8 80          > BYTE #80
+ 472  83B9 80          > BYTE #80
+ 472  83BA 80          > BYTE #80
+ 472  83BB 80          > BYTE #80
+ 472  83BC 80          > BYTE #80
+ 472  83BD 80          > BYTE #80
+ 472  83BE 80          > BYTE #80
+ 472  83BF 80          > BYTE #80
+ 472  83C0 80          > BYTE #80
+ 472  83C1 80          > BYTE #80
+ 472  83C2 80          > BYTE #80
+ 472  83C3 80          > BYTE #80
+ 472  83C4 80          > BYTE #80
+ 472  83C5 80          > BYTE #80
+ 472  83C6 80          > BYTE #80
+ 472  83C7 80          > BYTE #80
+ 472  83C8 80          > BYTE #80
+ 472  83C9 80          > BYTE #80
+ 472  83CA 80          > BYTE #80
+ 472  83CB 80          > BYTE #80
+ 472  83CC 80          > BYTE #80
+ 472  83CD 80          > BYTE #80
+ 472  83CE 80          > BYTE #80
+ 472  83CF 80          > BYTE #80
+ 472  83D0 80          > BYTE #80
+ 472  83D1 80          > BYTE #80
+ 472  83D2 80          > BYTE #80
+ 472  83D3 80          > BYTE #80
+ 472  83D4 80          > BYTE #80
+ 472  83D5 80          > BYTE #80
+ 472  83D6 80          > BYTE #80
+ 472  83D7 80          > BYTE #80
+ 472  83D8 80          > BYTE #80
+ 472  83D9 80          > BYTE #80
+ 472  83DA 80          > BYTE #80
+ 472  83DB 80          > BYTE #80
+ 472  83DC 80          > BYTE #80
+ 472  83DD 80          > BYTE #80
+ 472  83DE 80          > BYTE #80
+ 472  83DF 80          > BYTE #80
+ 472  83E0 80          > BYTE #80
+ 472  83E1 80          > BYTE #80
+ 472  83E2 80          > BYTE #80
+ 472  83E3 80          > BYTE #80
+ 472  83E4 80          > BYTE #80
+ 472  83E5 80          > BYTE #80
+ 472  83E6 80          > BYTE #80
+ 472  83E7 80          > BYTE #80
+ 472  83E8 80          > BYTE #80
+ 472  83E9 80          > BYTE #80
+ 472  83EA 80          > BYTE #80
+ 472  83EB 80          > BYTE #80
+ 472  83EC 80          > BYTE #80
+ 472  83ED 80          > BYTE #80
+ 472  83EE 80          > BYTE #80
+ 472  83EF 80          > BYTE #80
+ 472  83F0 80          > BYTE #80
+ 472  83F1 80          > BYTE #80
+ 472  83F2 80          > BYTE #80
+ 472  83F3 80          > BYTE #80
+ 472  83F4 80          > BYTE #80
+ 472  83F5 80          > BYTE #80
+ 472  83F6 80          > BYTE #80
+ 472  83F7 80          > BYTE #80
+ 472  83F8 80          > BYTE #80
+ 472  83F9 80          > BYTE #80
+ 472  83FA 80          > BYTE #80
+ 472  83FB 80          > BYTE #80
+ 472  83FC 80          > BYTE #80
+ 472  83FD 80          > BYTE #80
+ 472  83FE 80          > BYTE #80
+ 472  83FF 80          > BYTE #80
+ 472  8400 80          > BYTE #80
+ 473  8401
+ 474  8401              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 475  8401              ; interrupt_new_vector
+ 476  8401              ; returns hl - running point without changes
+ 477  8401              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 478  8401              interrupt_new_vector:
+ 479  8401 C5           	push bc
+ 480  8402              interrupt_new_vector_try_again:
+ 481  8402 CD 51 84     	call patrik_rak_cmwc_rnd
+ 482  8405 E6 1C        	and 0b00011100
+ 483  8407 28 F9        	jr z, interrupt_new_vector_try_again
+ 484  8409 F5           	push af
+ 485  840A              interrupt_new_vector_try_again_2:
+ 486  840A CD 51 84     	call patrik_rak_cmwc_rnd
+ 487  840D E6 1C        	and 0b00011100
+ 488  840F 28 F9        	jr z, interrupt_new_vector_try_again_2
+ 489  8411 6F           	ld l, a ; horisontal ready
+ 490  8412 F1           	pop af
+ 491  8413 67           	ld h, a ; vertical ready
+ 492  8414 85           	add l
+ 493  8415 FE 19        	cp 25 ; minimal speed
+ 494  8417 38 E9        	jr c, interrupt_new_vector_try_again
+ 495  8419
+ 496  8419 22 15 94     	ld (draw_color_lines_vector), hl
+ 497  841C
+ 498  841C              	; set vector towards center of the screen
+ 499  841C 3A 13 94     	ld a, (draw_color_lines_running_point + 1) ; vertical
+ 500  841F 21 16 94     	ld hl, draw_color_lines_vector + 1
+ 501  8422 AE           	xor (hl) ; vertical vector
+ 502  8423 E6 80        	and 0b10000000
+ 503  8425 28 08        	jr z, interrupt_new_vector_vertical_as_is
+ 504  8427 3A 16 94     	ld a, (draw_color_lines_vector + 1)
+ 505  842A ED 44        	neg
+ 506  842C 32 16 94     	ld (draw_color_lines_vector + 1), a
+ 507  842F              interrupt_new_vector_vertical_as_is:
+ 508  842F
+ 509  842F 3A 12 94     	ld a, (draw_color_lines_running_point + 0) ; horizontal
+ 510  8432 21 15 94     	ld hl, draw_color_lines_vector + 0 ; horizontal vector
+ 511  8435 AE           	xor (hl)
+ 512  8436 E6 80        	and 0b10000000
+ 513  8438 28 12        	jr z, interrupt_new_vector_horizontal_as_is
+ 514  843A 3A 15 94     	ld a, (draw_color_lines_vector + 0)
+ 515  843D ED 44        	neg
+ 516  843F 32 15 94     	ld (draw_color_lines_vector + 0), a
+ 517  8442              interrupt_new_vector_try_again_3:
+ 518  8442 CD 51 84     	call patrik_rak_cmwc_rnd
+ 519  8445 E6 07        	and 0b00000111
+ 520  8447 28 F9        	jr z, interrupt_new_vector_try_again_3
+ 521  8449 32 17 94     	ld (color), a
+ 522  844C              interrupt_new_vector_horizontal_as_is:
+ 523  844C C1           	pop bc
+ 524  844D 2A 12 94     	ld hl, (draw_color_lines_running_point)
+ 525  8450 C9           	ret
+ 526  8451
+ 527  8451              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 528  8451              ; rnd generator by Patrik Rak
+ 529  8451              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 530  8451              	INCLUDE "rnd.asm"
+# file opened: rnd.asm
+   1+ 8451              ;Patrik Rak
+   2+ 8451
+   3+ 8451              patrik_rak_cmwc_rnd:
+   4+ 8451 21 74 84       ld  hl,.table
+   5+ 8454 01 00 00     .idx:   ld  bc,0       ; i
+   6+ 8457 09             add  hl,bc
+   7+ 8458 79             ld  a,c
+   8+ 8459 3C             inc  a
+   9+ 845A E6 07          and  7
+  10+ 845C 32 55 84       ld  (.idx+1),a  ; i = ( i + 1 ) & 7
+  11+ 845F 4E             ld  c,(hl)    ; y = q[i]
+  12+ 8460 EB             ex  de,hl
+  13+ 8461 61             ld  h,c    ; t = 256 * y
+  14+ 8462 68             ld  l,b
+  15+ 8463 ED 42          sbc  hl,bc    ; t = 255 * y
+  16+ 8465 ED 42          sbc  hl,bc    ; t = 254 * y
+  17+ 8467 ED 42          sbc  hl,bc    ; t = 253 * y
+  18+ 8469 0E 00        .car:   ld  c,0    ; c
+  19+ 846B 09             add  hl,bc    ; t = 253 * y + c
+  20+ 846C 7C             ld  a,h    ; c = t / 256
+  21+ 846D 32 6A 84       ld  (.car+1),a
+  22+ 8470 7D             ld  a,l    ; x = t % 256
+  23+ 8471 2F             cpl      ; x = (b-1) - x = -x - 1 = ~x + 1 - 1 = ~x
+  24+ 8472 12             ld  (de),a
+  25+ 8473 C9             ret
+  26+ 8474
+  27+ 8474 52 61 78 6F  .table    db   82,97,120,111,102,116,20,12
+  27+ 8478 66 74 14 0C
+# file closed: rnd.asm
+ 531  847C
+ 532  847C              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 533  847C              ; start_demo_continued
+ 534  847C              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 535  847C              start_demo_continued:
+ 536  847C
+ 537  847C 21 00 58     	ld hl, 0x5800
+ 538  847F 16 47        	ld d, 0b01000111
+ 539  8481 01 00 03     	ld bc, 768 ; size of attr
+ 540  8484 CD 23 86     	call fill_mem ; attributes black white
+ 541  8487
+ 542  8487 21 00 40     	ld hl, 0x4000 ; clear screen memory
+ 543  848A 16 00        	ld d, 0
+ 544  848C 01 00 18     	ld bc, 0x1800 ; size of screen
+ 545  848F CD 23 86     	call fill_mem
+ 546  8492
+ 547  8492 3A 96 9C     	ld a, (flip_mask)
+ 548  8495 3E 00        	ld a, 0
+ 549  8497 6F           	ld l, a
+ 550  8498 3E 07        	ld a, 7 ; select page 7
+ 551  849A E6 07        	and 0b00000111
+ 552  849C B5           	or l
+ 553  849D F6 10        	or 16
+ 554  849F 32 5C 5B     	ld (stored_paging_byte_address), a
+ 555  84A2 01 FD 7F     	ld bc, #7ffd
+ 556  84A5 ED 79        	out (c),a
+ 557  84A7
+ 558  84A7 21 00 C0     	ld hl, 0xc000 ; clear screen memory (shadow screen this time)
+ 559  84AA 16 00        	ld d, 0
+ 560  84AC 01 00 18     	ld bc, 0x1800 ; size of screen
+ 561  84AF CD 23 86     	call fill_mem
+ 562  84B2
+ 563  84B2 21 00 D8     	ld hl, 0xd800
+ 564  84B5 16 47        	ld d, 0b01000111
+ 565  84B7 01 00 03     	ld bc, 768 ; size of attr
+ 566  84BA CD 23 86     	call fill_mem ; attributes black white (on shadow screen)
+ 567  84BD
+ 568  84BD 16 76        	ld d, 0b01110110 ; fill background buffer with yellow (both of them)
+ 569  84BF 21 30 99     	ld hl, screen_0_background
+ 570  84C2 01 B0 01     	ld bc, screen_background_end - screen_0_background
+ 571  84C5 CD 23 86     	call fill_mem
+ 572  84C8
+ 573  84C8 F3           	di
+ 574  84C9 21 00 83     	ld hl, im2_interrupt_block ; prepare interrupt mode 2
+ 575  84CC 7C           	ld a, h
+ 576  84CD ED 47        	ld i, a
+ 577  84CF ED 5E        	im 2
+ 578  84D1 FB           	ei
+ 579  84D2
+ 580  84D2 3E 01        	ld a, 1
+ 581  84D4 32 9D 9C     	ld (rotat_x_increment), a
+ 582  84D7
+ 583  84D7              main_loop:
+ 584  84D7 76           	halt
+ 585  84D8              main_loop_counter_loop:
+ 586  84D8 3A 0B 94     	ld a, (clock_counter_5) ; this demo is 50 hz
+ 587  84DB              	; so clock steps one time each 5 frames
+ 588  84DB FE 05        	cp 5
+ 589  84DD 38 0F        	jr c, main_loop_counter_skip
+ 590  84DF D6 05        	sub 5
+ 591  84E1 32 0B 94     	ld (clock_counter_5), a
+ 592  84E4 3E 01        	ld a, 1
+ 593  84E6 32 0C 94     	ld (clock_changed), a
+ 594  84E9 CD 5E 86     	call decrement_bcd
+ 595  84EC 18 EA        	jr main_loop_counter_loop
+ 596  84EE              main_loop_counter_skip:
+ 597  84EE
+ 598  84EE 2A 0E 94     	ld hl, (bcd_3)
+ 599  84F1 3E 00        	ld a, 0
+ 600  84F3 B4           	or h
+ 601  84F4 B5           	or l
+ 602  84F5 2A 10 94     	ld hl, (bcd_1)
+ 603  84F8 B4           	or h
+ 604  84F9 B5           	or l
+ 605  84FA 20 45        	jr nz, main_loop_not_elapsed
+ 606  84FC 3A 1D 94     	ld a, (zero_timer)
+ 607  84FF 3D           	dec a
+ 608  8500 32 1D 94     	ld (zero_timer), a
+ 609  8503 20 3C        	jr nz, main_loop_not_elapsed
+ 610  8505              	; clear screen here and display end message
+ 611  8505 F3           	di
+ 612  8506 3E 00        	ld a, 0
+ 613  8508 32 96 9C     	ld (flip_mask), a
+ 614  850B 21 00 40     	ld hl, 0x4000 ; clear screen memory
+ 615  850E 16 00        	ld d, 0
+ 616  8510 01 00 18     	ld bc, 0x1800 ; size of screen
+ 617  8513 CD 23 86     	call fill_mem
+ 618  8516 3A 96 9C     	ld a, (flip_mask)
+ 619  8519 3E 00        	ld a, 0
+ 620  851B 6F           	ld l, a
+ 621  851C 3E 07        	ld a, 7 ; select page 7
+ 622  851E E6 07        	and 0b00000111
+ 623  8520 B5           	or l
+ 624  8521 F6 10        	or 16
+ 625  8523 32 5C 5B     	ld (stored_paging_byte_address), a
+ 626  8526 01 FD 7F     	ld bc, #7ffd
+ 627  8529 ED 79        	out (c),a
+ 628  852B
+ 629  852B 21 00 58     	ld hl, 0x5800
+ 630  852E 16 47        	ld d, 0b01000111
+ 631  8530 01 00 03     	ld bc, 768 ; size of attr
+ 632  8533 CD 23 86     	call fill_mem ; attributes black white
+ 633  8536
+ 634  8536 21 1B 8A     	ld hl, svg_vectors
+ 635  8539 22 1E 94     	ld (polyline_pointer), hl
+ 636  853C
+ 637  853C              	; run drawing procedure from here
+ 638  853C              busy_loop:
+ 639  853C CD E0 89     	call fischinger_draw_polyline
+ 640  853F 18 FB        	jr busy_loop
+ 641  8541
+ 642  8541              main_loop_not_elapsed:
+ 643  8541
+ 644  8541 3A 1C 94     	ld a, (clock_disabled)
+ 645  8544 B7           	or a
+ 646  8545 20 65        	jr nz, print_clock_skip
+ 647  8547              	; load fonts and print clock
+ 648  8547 3A 0C 94     	ld a, (clock_changed)
+ 649  854A B7           	or a
+ 650  854B 28 5F        	jr z, print_clock_skip
+ 651  854D DD 21 E0 9A  	ld ix, clock_points_array
+ 652  8551 21 0E 94     	ld hl, bcd_3
+ 653  8554 0E 00        	ld c, 0
+ 654  8556 CD AF 85     	call print_digit
+ 655  8559 21 0F 94     	ld hl, bcd_2
+ 656  855C 0E 08        	ld c, 8
+ 657  855E CD AF 85     	call print_digit
+ 658  8561 21 10 94     	ld hl, bcd_1
+ 659  8564 0E 10        	ld c, 16
+ 660  8566 CD AF 85     	call print_digit
+ 661  8569 21 11 94     	ld hl, bcd_0
+ 662  856C 0E 19        	ld c, 25
+ 663  856E CD AF 85     	call print_digit
+ 664  8571
+ 665  8571 16 0C        	ld d, 12
+ 666  8573 1E 18        	ld e, 24
+ 667  8575 DD 73 00 DD  	ld (ix), de ; add also decimal point
+ 667  8579 72 01
+ 668  857B DD 23        	inc ix
+ 669  857D DD 23        	inc ix
+ 670  857F
+ 671  857F DD 54 DD 5D  	ld de, ix
+ 672  8583 21 90 9C     	ld hl, clock_points_array_end
+ 673  8586 B7           	or a ; drop carry
+ 674  8587 ED 52        	sbc hl, de
+ 675  8589 B7           	or a ; drop carry
+ 676  858A CB 1C        	rr h
+ 677  858C CB 1D        	rr l ; division by 2
+ 678  858E 44 4D        	ld bc, hl
+ 679  8590 21 00 00     	ld hl, 0x0000
+ 680  8593              print_clock_terminator_loop:
+ 681  8593 DD 75 00 DD  	ld (ix+0), hl ; mark dot as disabled
+ 681  8597 74 01
+ 682  8599 DD 23        	inc ix
+ 683  859B DD 23        	inc ix
+ 684  859D 0B           	dec bc
+ 685  859E 78           	ld a, b
+ 686  859F B1           	or c
+ 687  85A0 20 F1        	jr nz, print_clock_terminator_loop
+ 688  85A2
+ 689  85A2 3E 00        	ld a, 0
+ 690  85A4 32 0C 94     	ld (clock_changed), a
+ 691  85A7 3E 01        	ld a, 1
+ 692  85A9 32 0D 94     	ld (clock_changed_draw), a
+ 693  85AC              print_clock_skip:
+ 694  85AC              	; the interrupt routine will display it later
+ 695  85AC
+ 696  85AC C3 D7 84     	jp main_loop
+ 697  85AF
+ 698  85AF              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 699  85AF              ; print_digit
+ 700  85AF              ; c - position
+ 701  85AF              ; hl - bcd value pointer
+ 702  85AF              ; ix - running pointer of points array
+ 703  85AF              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 704  85AF              print_digit:
+ 705  85AF 7E           	ld a, (hl)
+ 706  85B0 57           	ld d, a
+ 707  85B1 CB 17        	rl a
+ 708  85B3 CB 17        	rl a
+ 709  85B5 CB 17        	rl a
+ 710  85B7 82           	add d
+ 711  85B8 21 00 91     	ld hl, fonts
+ 712  85BB 85           	add l
+ 713  85BC 6F           	ld l, a ; hl should now point to the right font
+ 714  85BD 06 09        	ld b, 9 ; hight of the font here
+ 715  85BF 16 04        	ld d, 4 ; vertical pos of the clock here
+ 716  85C1              print_digit_loop:
+ 717  85C1 59           	ld e, c
+ 718  85C2 7E           	ld a, (hl) ; load row from font
+ 719  85C3
+ 720  85C3 1C           	inc e
+ 721  85C4
+ 722  85C4 CB 77        	bit 6, a ; test bit 6
+ 723  85C6 28 0A        	jr z, print_digit_bit6_skip
+ 724  85C8 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 724  85CC 72 01
+ 725  85CE DD 23        	inc ix
+ 726  85D0 DD 23        	inc ix
+ 727  85D2              print_digit_bit6_skip:
+ 728  85D2 1C           	inc e
+ 729  85D3 CB 6F        	bit 5, a ; test bit 5
+ 730  85D5 28 0A        	jr z, print_digit_bit5_skip
+ 731  85D7 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 731  85DB 72 01
+ 732  85DD DD 23        	inc ix
+ 733  85DF DD 23        	inc ix
+ 734  85E1              print_digit_bit5_skip:
+ 735  85E1 1C           	inc e
+ 736  85E2 CB 67        	bit 4, a ; test bit 4
+ 737  85E4 28 0A        	jr z, print_digit_bit4_skip
+ 738  85E6 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 738  85EA 72 01
+ 739  85EC DD 23        	inc ix
+ 740  85EE DD 23        	inc ix
+ 741  85F0              print_digit_bit4_skip:
+ 742  85F0 1C           	inc e
+ 743  85F1 CB 5F        	bit 3, a ; test bit 3
+ 744  85F3 28 0A        	jr z, print_digit_bit3_skip
+ 745  85F5 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 745  85F9 72 01
+ 746  85FB DD 23        	inc ix
+ 747  85FD DD 23        	inc ix
+ 748  85FF              print_digit_bit3_skip:
+ 749  85FF 1C           	inc e
+ 750  8600 CB 57        	bit 2, a ; test bit 2
+ 751  8602 28 0A        	jr z, print_digit_bit2_skip
+ 752  8604 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 752  8608 72 01
+ 753  860A DD 23        	inc ix
+ 754  860C DD 23        	inc ix
+ 755  860E              print_digit_bit2_skip:
+ 756  860E 1C           	inc e
+ 757  860F CB 4F        	bit 1, a ; test bit 1
+ 758  8611 28 0A        	jr z, print_digit_bit1_skip
+ 759  8613 DD 73 00 DD  	ld (ix), de ; [de] points array
+ 759  8617 72 01
+ 760  8619 DD 23        	inc ix
+ 761  861B DD 23        	inc ix
+ 762  861D              print_digit_bit1_skip:
+ 763  861D              	;inc e
+ 764  861D
+ 765  861D 23           	inc hl
+ 766  861E 14           	inc d
+ 767  861F 05           	dec b
+ 768  8620 20 9F        	jr nz, print_digit_loop
+ 769  8622 C9           	ret
+ 770  8623
+ 771  8623              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 772  8623              ; fill memory with constant byte
+ 773  8623              ; D  - byte
+ 774  8623              ; HL - start address
+ 775  8623              ; BC - size
+ 776  8623              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 777  8623              fill_mem:
+ 778  8623 7A             ld A, D
+ 779  8624 77             ld (HL), A
+ 780  8625 23             inc HL
+ 781  8626 0B             dec BC
+ 782  8627 78             ld A,B
+ 783  8628 B1             or C
+ 784  8629 20 F8          jr nz, fill_mem
+ 785  862B C9             ret
+ 786  862C
+ 787  862C
+ 788  862C              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 789  862C              ; drawing code
+ 790  862C              ; ix - pointer to attr struct [hl] [enable]
+ 791  862C              ; de - pointer to background buffer
+ 792  862C              ; bc - array members
+ 793  862C              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 794  862C              drawing_code:
+ 795  862C              	;ld a, (ix+2)
+ 796  862C              	;or a
+ 797  862C              	;jr z, drawing_code_skip
+ 798  862C DD 6E 00 DD  	ld hl, (ix+0)
+ 798  8630 66 01
+ 799  8632 1A           	ld a, (de)
+ 800  8633 08           	ex af, af ; swap register set
+ 801  8634 7E           	ld a, (hl) ; read from screen
+ 802  8635 12           	ld (de), a ; write to buffer
+ 803  8636 08           	ex af, af
+ 804  8637 77           	ld (hl), a ; write to screen
+ 805  8638              drawing_code_skip:
+ 806  8638 13           	inc de
+ 807  8639 DD 23        	inc ix
+ 808  863B DD 23        	inc ix
+ 809  863D DD 23        	inc ix
+ 810  863F 0B           	dec bc
+ 811  8640 78           	ld a, b
+ 812  8641 B1           	or c
+ 813  8642 20 E8        	jr nz, drawing_code
+ 814  8644 C9           	ret
+ 815  8645
+ 816  8645              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 817  8645              ; drawing code reverse
+ 818  8645              ; ix - pointer to last attr struct [hl] [enable]
+ 819  8645              ; de - pointer to last background buffer
+ 820  8645              ; bc - array members
+ 821  8645              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 822  8645              drawing_code_reverse:
+ 823  8645 1B           	dec de ; the same thing but backwards
+ 824  8646 DD 2B        	dec ix
+ 825  8648 DD 2B        	dec ix
+ 826  864A DD 2B        	dec ix
+ 827  864C              	;ld a, (ix+2)
+ 828  864C              	;or a
+ 829  864C              	;jr z, drawing_code_reverse_skip
+ 830  864C DD 6E 00 DD  	ld hl, (ix+0)
+ 830  8650 66 01
+ 831  8652 1A           	ld a, (de)
+ 832  8653 08           	ex af, af ; swap register set
+ 833  8654 7E           	ld a, (hl)
+ 834  8655 12           	ld (de), a
+ 835  8656 08           	ex af, af
+ 836  8657 77           	ld (hl), a
+ 837  8658              drawing_code_reverse_skip:
+ 838  8658 0B           	dec bc
+ 839  8659 78           	ld a, b
+ 840  865A B1           	or c
+ 841  865B 20 E8        	jr nz, drawing_code_reverse
+ 842  865D C9           	ret
+ 843  865E
+ 844  865E              ;
+ 845  865E              ; this function decrements the bcd_values until 0,0,0,0
+ 846  865E              ;
+ 847  865E              decrement_bcd:
+ 848  865E 21 11 94       ld hl, bcd_3 + 3
+ 849  8661 7E             ld a, (hl)
+ 850  8662 3D             dec a
+ 851  8663 77             ld (hl), a
+ 852  8664 E6 80          and 0b10000000 ; check bcd underflow
+ 853  8666 C8             ret z
+ 854  8667 3E 09          ld a, 9
+ 855  8669 77             ld (hl), a
+ 856  866A 2B             dec hl
+ 857  866B 7E             ld a, (hl)
+ 858  866C 3D             dec a
+ 859  866D 77             ld (hl), a
+ 860  866E E6 80          and 0b10000000
+ 861  8670 C8             ret z
+ 862  8671 3E 09          ld a, 9
+ 863  8673 77             ld (hl), a
+ 864  8674 2B             dec hl
+ 865  8675 7E             ld a, (hl)
+ 866  8676 3D             dec a
+ 867  8677 77             ld (hl), a
+ 868  8678 E6 80          and 0b10000000
+ 869  867A C8             ret z
+ 870  867B 3E 09          ld a, 9
+ 871  867D 77             ld (hl), a
+ 872  867E 2B             dec hl
+ 873  867F 7E             ld a, (hl)
+ 874  8680 3D             dec a
+ 875  8681 77             ld (hl), a
+ 876  8682 E6 80          and 0b10000000
+ 877  8684 C8             ret z
+ 878  8685 3E 00          ld a, 0
+ 879  8687 77             ld (hl), a
+ 880  8688 23             inc hl
+ 881  8689 77             ld (hl), a
+ 882  868A 23             inc hl
+ 883  868B 77             ld (hl), a
+ 884  868C 23             inc hl
+ 885  868D 77             ld (hl), a
+ 886  868E                ; timer elapsed stop here
+ 887  868E C9             ret
+ 888  868F
+ 889  868F              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 890  868F              ; vector.asm -- drawing routines
+ 891  868F              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 892  868F              	INCLUDE "vector.asm"
+# file opened: vector.asm
+   1+ 868F              ;
+   2+ 868F              ; Title:	ZX Spectrum Vector Output Routines
+   3+ 868F              ; Author:	Dean Belfield
+   4+ 868F              ; Created:	30/06/2012
+   5+ 868F              ; Last Updated:	30/05/2020
+   6+ 868F              ;
+   7+ 868F              ; Requires:	output
+   8+ 868F              ;
+   9+ 868F              ; Modinfo:
+  10+ 868F              ;
+  11+ 868F              ; 03/07/2012:	Simplified line draw; now always draws the line down. Relabled to improve clarity
+  12+ 868F              ;		Fixed bug in point tables; one entry had 7 bits
+  13+ 868F              ; 04/07/2012:	Added Draw_Horz_Line_Solid & Draw_Horz_Line_Texture; special fast case used for drawing polygons
+  14+ 868F              ; 05/07/2012:	Added Draw_Circle routine; needs some optimisation, more a proof of concept at the moment
+  15+ 868F              ; 01/04/2020:	Moved Draw_Horz_Line_Solid & Draw_Horz_Line_Texture to vector_filled.z80
+  16+ 868F              ; 21/05/2020:	Fixed bug in Draw_Line where final pixel not plotted
+  17+ 868F              ; 30/05/2020:	Fixed bug in implementation of Bresenham for Draw_Line and Erase_Line
+  18+ 868F              ;
+  19+ 868F              ; changes: nikhotmsk added an ALIGN thing near table
+  20+ 868F
+  21+ 868F              ;
+  22+ 868F              ; Most of these routines will precalculate the screen address in HL and return a bit position in A (0-7).
+  23+ 868F              ; The bit position is used as an index into the table Plot_Point; this contains a pixel set in the correct
+  24+ 868F              ; position for each bit, so 0=>%10000000, 1=>%01000000 and so on.
+  25+ 868F              ;
+  26+ 868F              ; The line routine, for example, will only do this slow calculation once and will work relative to that position
+  27+ 868F              ; for the rest of the draw. So, to move the pixel right if the data is stored in register D you would RRC D.
+  28+ 868F              ; At this point, if the pixel is %00000010 it would then be %00000001. If the pixel is then rotated again, it would
+  29+ 868F              ; be %10000000 and the carry bit would be set. This is picked up in the code and an INC or DEC L is used to move
+  30+ 868F              ; HL to the next adjacent character position.
+  31+ 868F              ;
+  32+ 868F              ; The function Pixel_Address_Down takes HL and move down or up one pixel line, taking into account the
+  33+ 868F              ; Spectrum's strange screen layout. Again, this is quicker than calculating the address from scratch each
+  34+ 868F              ; time as most of the time it's just doing an INC H (or DEC H).
+  35+ 868F              ;
+  36+ 868F              ; For the sake of clarity I've used CALLs within loops; I wouldn't normally do this in speed critical code but felt
+  37+ 868F              ; that I'd lose clarity if I didn't. Feel free to inline any code that is called.
+  38+ 868F              ;
+  39+ 868F              ; Finally, this code uses a lot of self-modifying code; the code is in RAM so it is possible to use the code to
+  40+ 868F              ; modify itself. This is used in the line routine to adjust the line drawing loop to draw in all four quadrants.
+  41+ 868F              ;
+  42+ 868F
+  43+ 868F              ; Plot routine
+  44+ 868F              ; B = Y pixel position
+  45+ 868F              ; C = X pixel position
+  46+ 868F              ;
+  47+ 868F 00           Plot_probe: BYTE 0
+  48+ 8690 CD D8 88     Plot:			CALL Get_Pixel_Address		; Get screen address in HL, pixel position (0 to 7) in A
+  49+ 8693 01 C8 88     			LD BC,Plot_Point		; Address of point lookup table
+  50+ 8696 81           			ADD A,C				; Add pixel position to get entry in table
+  51+ 8697 4F           			LD C,A
+  52+ 8698 0A           			LD A,(BC)			; Get pixel data from table
+  53+ 8699 A6           			and (hl) ; probe screen
+  54+ 869A 32 8F 86     			ld (Plot_probe), a
+  55+ 869D 0A           			LD A,(BC)			; Get pixel data from table
+  56+ 869E B6           			OR (HL)				; OR with screen data
+  57+ 869F 77           			LD (HL),A			; Write back to screen
+  58+ 86A0 C9           			RET
+  59+ 86A1
+  60+ 86A1
+  61+ 86A1              ; Unplot routine
+  62+ 86A1              ; B = Y pixel position
+  63+ 86A1              ; C = X pixel position
+  64+ 86A1              ;
+  65+ 86A1 CD D8 88     Unplot:			CALL Get_Pixel_Address		; Same as Plot...
+  66+ 86A4 01 D0 88     			LD BC,Unplot_Point
+  67+ 86A7 81           			ADD A,C
+  68+ 86A8 4F           			LD C,A
+  69+ 86A9 0A           			LD A,(BC)
+  70+ 86AA A6           			AND (HL)			; AND with screen data
+  71+ 86AB 77           			LD (HL),A
+  72+ 86AC C9           			RET
+  73+ 86AD
+  74+ 86AD              ; Draw Circle (Beta - uses Plot to draw the circle outline as a proof of concept)
+  75+ 86AD              ; B = Y pixel position of circle centre
+  76+ 86AD              ; C = X pixel position of circle centre
+  77+ 86AD              ; A = Radius of circle
+  78+ 86AD              ;
+  79+ 86AD A7           Draw_Circle:		AND A				; Zero radius
+  80+ 86AE 28 E0        			JR Z,Plot			; Just plot the point
+  81+ 86B0 ED 43 DA 86  			LD (Draw_Circle_M1 + 1),BC	; Store circle origin
+  82+ 86B4
+  83+ 86B4 DD 67        			LD IXH,A			; IXH = Y
+  84+ 86B6 DD 2E 00     			LD IXL,0			; IXL = X
+  85+ 86B9              ;
+  86+ 86B9              ; Calculate BC (D2) = 3-(R*2)
+  87+ 86B9              ;
+  88+ 86B9 26 00        			LD H,0				; HL = R
+  89+ 86BB 6F           			LD L,A
+  90+ 86BC 29           			ADD HL,HL			; HL = R*2
+  91+ 86BD EB           			EX DE,HL			; DE = R*2
+  92+ 86BE 21 03 00     			LD HL,3
+  93+ 86C1 A7           			AND A
+  94+ 86C2 ED 52        			SBC HL,DE			; HL = 3-(R*2)
+  95+ 86C4 44           			LD B,H
+  96+ 86C5 4D           			LD C,L
+  97+ 86C6              ;
+  98+ 86C6              ; Calculate HL (Delta) = 1-R
+  99+ 86C6              ;
+ 100+ 86C6 21 01 00     			LD HL,1
+ 101+ 86C9 16 00        			LD D,0
+ 102+ 86CB DD 5D        			LD E,IXL
+ 103+ 86CD A7           			AND A
+ 104+ 86CE ED 52        			SBC HL,DE			; HL = 1 - CR
+ 105+ 86D0              ;
+ 106+ 86D0              ; SET DE (D1) = 1
+ 107+ 86D0              ;
+ 108+ 86D0 11 01 00     			LD DE,1
+ 109+ 86D3
+ 110+ 86D3 DD 7C        Draw_Circle_Loop:	LD A,IXH			; Get Y in A
+ 111+ 86D5 DD BD        			CP IXL				; Compare with X
+ 112+ 86D7 D8           			RET C				; Return if X>Y
+ 113+ 86D8              ;
+ 114+ 86D8              ; The routine only calculates an eighth of the circle, so use symnmetry to draw
+ 115+ 86D8              ;
+ 116+ 86D8 D9           			EXX
+ 117+ 86D9 11 00 00     Draw_Circle_M1:		LD DE,0				; Get the circle origin
+ 118+ 86DC
+ 119+ 86DC 7B           			LD A,E
+ 120+ 86DD DD 85        			ADD A,IXL
+ 121+ 86DF 4F           			LD C,A
+ 122+ 86E0 7A           			LD A,D
+ 123+ 86E1 DD 84        			ADD A,IXH
+ 124+ 86E3 47           			LD B,A
+ 125+ 86E4 CD 90 86     			CALL Plot			; Plot CX+X,CY+Y
+ 126+ 86E7 7B           			LD A,E
+ 127+ 86E8 DD 95        			SUB IXL
+ 128+ 86EA 4F           			LD C,A
+ 129+ 86EB 7A           			LD A,D
+ 130+ 86EC DD 84        			ADD A,IXH
+ 131+ 86EE 47           			LD B,A
+ 132+ 86EF CD 90 86     			CALL Plot			; Plot CX-X,CY+Y
+ 133+ 86F2 7B           			LD A,E
+ 134+ 86F3 DD 85        			ADD A,IXL
+ 135+ 86F5 4F           			LD C,A
+ 136+ 86F6 7A           			LD A,D
+ 137+ 86F7 DD 94        			SUB IXH
+ 138+ 86F9 47           			LD B,A
+ 139+ 86FA CD 90 86     			CALL Plot			; Plot CX+X,CY-Y
+ 140+ 86FD 7B           			LD A,E
+ 141+ 86FE DD 95        			SUB IXL
+ 142+ 8700 4F           			LD C,A
+ 143+ 8701 7A           			LD A,D
+ 144+ 8702 DD 94        			SUB IXH
+ 145+ 8704 47           			LD B,A
+ 146+ 8705 CD 90 86     			CALL Plot			; Plot CY+X,CX-Y
+ 147+ 8708 7A           			LD A,D
+ 148+ 8709 DD 85        			ADD A,IXL
+ 149+ 870B 47           			LD B,A
+ 150+ 870C 7B           			LD A,E
+ 151+ 870D DD 84        			ADD A,IXH
+ 152+ 870F 4F           			LD C,A
+ 153+ 8710 CD 90 86     			CALL Plot			; Plot CY+X,CX+Y
+ 154+ 8713 7A           			LD A,D
+ 155+ 8714 DD 95        			SUB IXL
+ 156+ 8716 47           			LD B,A
+ 157+ 8717 7B           			LD A,E
+ 158+ 8718 DD 84        			ADD A,IXH
+ 159+ 871A 4F           			LD C,A
+ 160+ 871B CD 90 86     			CALL Plot			; Plot CY-X,CX+Y
+ 161+ 871E 7A           			LD A,D
+ 162+ 871F DD 85        			ADD A,IXL
+ 163+ 8721 47           			LD B,A
+ 164+ 8722 7B           			LD A,E
+ 165+ 8723 DD 94        			SUB IXH
+ 166+ 8725 4F           			LD C,A
+ 167+ 8726 CD 90 86     			CALL Plot			; Plot CY+X,CX-Y
+ 168+ 8729 7A           			LD A,D
+ 169+ 872A DD 95        			SUB IXL
+ 170+ 872C 47           			LD B,A
+ 171+ 872D 7B           			LD A,E
+ 172+ 872E DD 94        			SUB IXH
+ 173+ 8730 4F           			LD C,A
+ 174+ 8731 CD 90 86     			CALL Plot			; Plot CX+X,CY-Y
+ 175+ 8734 D9           			EXX
+ 176+ 8735              ;
+ 177+ 8735              ; Do the incremental circle thing here
+ 178+ 8735              ;
+ 179+ 8735 CB 7C        			BIT 7,H				; Check for Hl<=0
+ 180+ 8737 28 03        			JR Z,Draw_Circle_1
+ 181+ 8739 19           			ADD HL,DE			; Delta=Delta+D1
+ 182+ 873A 18 05        			JR Draw_Circle_2		;
+ 183+ 873C 09           Draw_Circle_1:		ADD HL,BC			; Delta=Delta+D2
+ 184+ 873D 03           			INC BC
+ 185+ 873E 03           			INC BC				; D2=D2+2
+ 186+ 873F DD 25        			DEC IXH				; Y=Y-1
+ 187+ 8741 03           Draw_Circle_2:		INC BC				; D2=D2+2
+ 188+ 8742 03           			INC BC
+ 189+ 8743 13           			INC DE				; D1=D1+2
+ 190+ 8744 13           			INC DE
+ 191+ 8745 DD 2C        			INC IXL				; X=X+1
+ 192+ 8747 18 8A        			JR Draw_Circle_Loop
+ 193+ 8749
+ 194+ 8749
+ 195+ 8749              ; Draw Triangle
+ 196+ 8749              ; IY = Pointer to 3 bytes worth of coordinate data
+ 197+ 8749              ;
+ 198+ 8749 FD 4E 00     Draw_Triangle:		LD C,(IY+0)
+ 199+ 874C FD 46 01     			LD B,(IY+1)
+ 200+ 874F FD 5E 02     			LD E,(IY+2)
+ 201+ 8752 FD 56 03     			LD D,(IY+3)
+ 202+ 8755 CD A3 87     			CALL Draw_Line
+ 203+ 8758 FD 4E 02     			LD C,(IY+2)
+ 204+ 875B FD 46 03     			LD B,(IY+3)
+ 205+ 875E FD 5E 04     			LD E,(IY+4)
+ 206+ 8761 FD 56 05     			LD D,(IY+5)
+ 207+ 8764 CD A3 87     			CALL Draw_Line
+ 208+ 8767 FD 4E 04     			LD C,(IY+4)
+ 209+ 876A FD 46 05     			LD B,(IY+5)
+ 210+ 876D FD 5E 00     			LD E,(IY+0)
+ 211+ 8770 FD 56 01     			LD D,(IY+1)
+ 212+ 8773 C3 A3 87     			JP Draw_Line
+ 213+ 8776
+ 214+ 8776              ; Erase Triangle
+ 215+ 8776              ; IY = Pointer to 3 bytes worth of coordinate data
+ 216+ 8776              ;
+ 217+ 8776 FD 4E 00     Erase_Triangle:		LD C,(IY+0)
+ 218+ 8779 FD 46 01     			LD B,(IY+1)
+ 219+ 877C FD 5E 02     			LD E,(IY+2)
+ 220+ 877F FD 56 03     			LD D,(IY+3)
+ 221+ 8782 CD 41 88     			CALL Erase_Line
+ 222+ 8785 FD 4E 02     			LD C,(IY+2)
+ 223+ 8788 FD 46 03     			LD B,(IY+3)
+ 224+ 878B FD 5E 04     			LD E,(IY+4)
+ 225+ 878E FD 56 05     			LD D,(IY+5)
+ 226+ 8791 CD 41 88     			CALL Erase_Line
+ 227+ 8794 FD 4E 04     			LD C,(IY+4)
+ 228+ 8797 FD 46 05     			LD B,(IY+5)
+ 229+ 879A FD 5E 00     			LD E,(IY+0)
+ 230+ 879D FD 56 01     			LD D,(IY+1)
+ 231+ 87A0 C3 41 88     			JP Erase_Line
+ 232+ 87A3
+ 233+ 87A3              ; Draw Line routine
+ 234+ 87A3              ; B = Y pixel position 1
+ 235+ 87A3              ; C = X pixel position 1
+ 236+ 87A3              ; D = Y pixel position 2
+ 237+ 87A3              ; E = X pixel position 2
+ 238+ 87A3              ;
+ 239+ 87A3              Draw_Line:
+ 240+ 87A3 7A           			LD A,D				; Check whether we are going to be drawing up
+ 241+ 87A4 B8           			CP B
+ 242+ 87A5 30 04        			JR NC,Draw_Line_1
+ 243+ 87A7
+ 244+ 87A7 C5           			PUSH BC				; If we are, then this neat trick swaps BC and DE
+ 245+ 87A8 D5           			PUSH DE				; using the stack, forcing the line to be always
+ 246+ 87A9 C1           			POP BC				; drawn downwards
+ 247+ 87AA D1           			POP DE
+ 248+ 87AB
+ 249+ 87AB CD D8 88     Draw_Line_1:		CALL Get_Pixel_Address		; Get screen address in HL, pixel position (0-7) in A
+ 250+ 87AE              ;
+ 251+ 87AE              ; At this point we have
+ 252+ 87AE              ;  A = Pixel position (0-7)
+ 253+ 87AE              ; HL = Screen address of the start point
+ 254+ 87AE              ; BC = Start coordinate (B=Y1, C=X1)
+ 255+ 87AE              ; DE = End coordinates  (D=Y2, E=X2)
+ 256+ 87AE              ;
+ 257+ 87AE
+ 258+ 87AE CD 1A 89     			call screen_address_to_attr_write
+ 259+ 87B1 DD 21 C8 88  			LD IX,Plot_Point		; Point to the Plot_Point table
+ 260+ 87B5 DD 85        			ADD A,IXL			; Add the pixel position to get entry in table
+ 261+ 87B7 DD 6F        			LD IXL,A
+ 262+ 87B9
+ 263+ 87B9 7A           			LD A,D				; Calculate the line height in B (Y2-Y1)
+ 264+ 87BA 90           			SUB B
+ 265+ 87BB 47           			LD B,A
+ 266+ 87BC
+ 267+ 87BC 7B           			LD A,E				; Calculate the line width in C (X2-X1)
+ 268+ 87BD 91           			SUB C
+ 269+ 87BE 38 0D        			JR C,Draw_Line_X1		; If carry set (negative result) then we are drawing from right to left
+ 270+ 87C0              ;
+ 271+ 87C0              ; This bit of code mods the main loop for drawing left to right
+ 272+ 87C0              ;
+ 273+ 87C0 4F           			LD C,A				; Store the line width
+ 274+ 87C1 3E 2C        			LD A,0x2C			; Code for INC L
+ 275+ 87C3 32 0D 88     			LD (Draw_Line_Q1_M3),A		; Mod the code
+ 276+ 87C6 32 35 88     			LD (Draw_Line_Q2_M3),A
+ 277+ 87C9 3E 0A        			LD A,0x0A			; Code for RRC D (CB 0A)
+ 278+ 87CB 18 0D        			JR Draw_Line_X2			; Skip the next bit
+ 279+ 87CD              ;
+ 280+ 87CD              ; This bit of code mods the main loop for drawing right to left
+ 281+ 87CD              ;
+ 282+ 87CD ED 44        Draw_Line_X1:		NEG				; The width of line is negative, so make it positive again
+ 283+ 87CF 4F           			LD C,A				; Store the line width
+ 284+ 87D0 3E 2D        			LD A,0x2D			; Code for DEC L
+ 285+ 87D2 32 0D 88     			LD (Draw_Line_Q1_M3),A
+ 286+ 87D5 32 35 88     			LD (Draw_Line_Q2_M3),A
+ 287+ 87D8 3E 02        			LD A,0x02			; Code for RLC D (CB 02)
+ 288+ 87DA              ;
+ 289+ 87DA              ; We've got the basic information at this point
+ 290+ 87DA              ;
+ 291+ 87DA 32 0A 88     Draw_Line_X2:		LD (Draw_Line_Q1_M2 + 1),A	; A contains the code for RLC D or RRC D, so make the mods
+ 292+ 87DD 32 32 88     			LD (Draw_Line_Q2_M2 + 1),A
+ 293+ 87E0 DD 56 00     			LD D,(IX+0)			; Get the pixel data from the Point_Plot table
+ 294+ 87E3 78           			LD A,B				; Check if B and C are 0
+ 295+ 87E4 B1           			OR C
+ 296+ 87E5 28 29        			JR Z,Draw_Line_P		; There is no line, so just plot a single point
+ 297+ 87E7              ;
+ 298+ 87E7              ; At this point
+ 299+ 87E7              ; HL = Screen address of the start point
+ 300+ 87E7              ;  B = Line height (YL)
+ 301+ 87E7              ;  C = Line width (XL)
+ 302+ 87E7              ;  D = Pixel data
+ 303+ 87E7              ;
+ 304+ 87E7 78           Draw_Line_Q:		LD A,B				; Work out which diagonal we are on
+ 305+ 87E8 B9           			CP C
+ 306+ 87E9 30 30        			JR NC,Draw_Line_Q2
+ 307+ 87EB              ;
+ 308+ 87EB              ; This bit of code draws the line where B<C (more horizontal than vertical)
+ 309+ 87EB              ;
+ 310+ 87EB 79           Draw_Line_Q1:		LD A,C				; A = XL
+ 311+ 87EC 32 04 88     			LD (Draw_Line_Q1_M1 + 1),A	; Self-mod the code to store XL in loop
+ 312+ 87EF 48           			LD C,B				; C = YL
+ 313+ 87F0 47           			LD B,A				; B = XL (loop counter)
+ 314+ 87F1 58           			LD E,B				; E = XL
+ 315+ 87F2 CB 3B        			SRL E				; E = XL / 2 (error)
+ 316+ 87F4 7E           Draw_Line_Q1_L:		LD A,(HL)			; Plot the pixel
+ 317+ 87F5 B2           			OR D ; TODO erase mode here
+ 318+ 87F6 77           			LD (HL),A ; draw pixel
+ 319+ 87F7              			;ld a, (paging_available)
+ 320+ 87F7              			;or a
+ 321+ 87F7              			;jr z, Draw_Line_no_shadow_screen
+ 322+ 87F7 CB FC        			set 7, h ; extended instruction, set bit 7 in register d
+ 323+ 87F9 7E           			ld a, (hl)
+ 324+ 87FA B2           			or d
+ 325+ 87FB 77           			ld (hl), a ; draw pixel
+ 326+ 87FC CB BC        			res 7, h
+ 327+ 87FE              Draw_Line_no_shadow_screen:
+ 328+ 87FE
+ 329+ 87FE 7B           			LD A,E				; Add the line height to the error (E = E - YL)
+ 330+ 87FF 91           			SUB C
+ 331+ 8800 5F           			LD E,A
+ 332+ 8801 30 06        			JR NC,Draw_Line_Q1_M2
+ 333+ 8803 C6 00        Draw_Line_Q1_M1:	ADD A,0				; Add the line width to the error (E = E + XL) - previously self-modded
+ 334+ 8805 5F           			LD E,A
+ 335+ 8806 CD F8 88     			CALL Pixel_Address_Down_Color
+ 336+ 8809 CB 0A        Draw_Line_Q1_M2:	RRC D				; Rotate the pixel right or left; more self-modifying code
+ 337+ 880B 30 01        			JR NC,Draw_Line_Q1_S
+ 338+ 880D 2C           Draw_Line_Q1_M3:	INC L				; If we get a carry then move to adjacent screen address; more self modifying code
+ 339+ 880E 10 E4        Draw_Line_Q1_S:		DJNZ Draw_Line_Q1_L		; Loop until the line is drawn
+ 340+ 8810 7E           Draw_Line_P:		LD A,(HL)			; Plot the final point
+ 341+ 8811 B2           			OR D
+ 342+ 8812 77           			LD (HL),A ; draw pixel
+ 343+ 8813              			;ld a, (paging_available)
+ 344+ 8813              			;or a
+ 345+ 8813              			;jr z, Draw_Line_no_shadow_screen
+ 346+ 8813 CB FC        			set 7, h ; extended instruction, set bit 7 in register d
+ 347+ 8815 7E           			ld a, (hl)
+ 348+ 8816 B2           			or d
+ 349+ 8817 77           			ld (hl), a ; draw pixel
+ 350+ 8818 CB BC        			res 7, h
+ 351+ 881A C9           			RET
+ 352+ 881B              ;
+ 353+ 881B              ; This bit draws the line where B>=C (more vertical than horizontal, or diagonal)
+ 354+ 881B              ;
+ 355+ 881B 32 30 88     Draw_Line_Q2:		LD (Draw_Line_Q2_M1 + 1),A	; Self-mod the code to store YL in loop
+ 356+ 881E 58           			LD E,B				; E = YL
+ 357+ 881F CB 3B        			SRL E				; E = YL / 2 (error)
+ 358+ 8821 7E           Draw_Line_Q2_L:		LD A,(HL)			; Plot the pixel
+ 359+ 8822 B2           			OR D
+ 360+ 8823 77           			LD (HL),A
+ 361+ 8824              			;ld a, (paging_available)
+ 362+ 8824              			;or a
+ 363+ 8824              			;jr z, Draw_Line_no_shadow_screen_2
+ 364+ 8824 CB FC        			set 7, h ; extended instruction, set bit 7 in register d
+ 365+ 8826 7E           			ld a, (hl)
+ 366+ 8827 B2           			or d
+ 367+ 8828 77           			ld (hl), a ; draw pixel
+ 368+ 8829 CB BC        			res 7, h
+ 369+ 882B              Draw_Line_no_shadow_screen_2:
+ 370+ 882B 7B           			LD A,E				; Add the line width to the error
+ 371+ 882C 91           			SUB C				;
+ 372+ 882D 30 0A        			JR NC,Draw_Line_Q2_S		; Skip the next bit if we don't get a carry
+ 373+ 882F C6 00        Draw_Line_Q2_M1: 	ADD A,0				; Add the line height to the error (E = E + XL) - previously self-modded
+ 374+ 8831 CB 0A        Draw_Line_Q2_M2:	RRC D				; Rotates the pixel right with carry
+ 375+ 8833 30 04        			JR NC,Draw_Line_Q2_S
+ 376+ 8835 2C           Draw_Line_Q2_M3:	INC L				; If we get a carry then move to adjacent screen address; more self modifying code
+ 377+ 8836 CD 1A 89     					call screen_address_to_attr_write
+ 378+ 8839 5F           Draw_Line_Q2_S:		LD E,A				; Store the error value back in
+ 379+ 883A CD F8 88     			CALL Pixel_Address_Down_Color		; And also move down
+ 380+ 883D 10 E2        			DJNZ Draw_Line_Q2_L
+ 381+ 883F 18 CF        			JR Draw_Line_P			; Plot the final point
+ 382+ 8841
+ 383+ 8841              ; Erase Line routine
+ 384+ 8841              ; B = Y pixel position 1
+ 385+ 8841              ; C = X pixel position 1
+ 386+ 8841              ; D = Y pixel position 2
+ 387+ 8841              ; E = X pixel position 2
+ 388+ 8841              ;
+ 389+ 8841 7A           Erase_Line:		LD A,D				; Check whether we are going to be drawing up
+ 390+ 8842 B8           			CP B
+ 391+ 8843 30 04        			JR NC,Erase_Line_1
+ 392+ 8845
+ 393+ 8845 C5           			PUSH BC				; If we are, then this neat trick swaps BC and DE
+ 394+ 8846 D5           			PUSH DE				; using the stack, forcing the line to be always
+ 395+ 8847 C1           			POP BC				; drawn downwards
+ 396+ 8848 D1           			POP DE
+ 397+ 8849
+ 398+ 8849 CD D8 88     Erase_Line_1:		CALL Get_Pixel_Address		; Get screen address in HL, pixel position (0-7) in A
+ 399+ 884C              ;
+ 400+ 884C              ; At this point we have
+ 401+ 884C              ;  A = Pixel position (0-7)
+ 402+ 884C              ; HL = Screen address of the start point
+ 403+ 884C              ; BC = Start coordinate (B=Y1, C=X1)
+ 404+ 884C              ; DE = End coordinates  (D=Y2, E=X2)
+ 405+ 884C              ;
+ 406+ 884C DD 21 D0 88  			LD IX,Unplot_Point		; Point to the Unplot_Point table
+ 407+ 8850 DD 85        			ADD A,IXL			; Add the pixel position to get entry in table
+ 408+ 8852 DD 6F        			LD IXL,A
+ 409+ 8854
+ 410+ 8854 7A           			LD A,D				; Calculate the line height in B (Y2-Y1)
+ 411+ 8855 90           			SUB B
+ 412+ 8856 47           			LD B,A
+ 413+ 8857
+ 414+ 8857 7B           			LD A,E				; Calculate the line width in C (X2-X1)
+ 415+ 8858 91           			SUB C
+ 416+ 8859 38 0D        			JR C,Erase_Line_X1		; If carry set (negative result) then we are drawing from right to left
+ 417+ 885B              ;
+ 418+ 885B              ; This bit of code mods the main loop for drawing left to right
+ 419+ 885B              ;
+ 420+ 885B 4F           			LD C,A				; Store the line width
+ 421+ 885C 3E 2C        			LD A,0x2C			; Code for INC L
+ 422+ 885E 32 A5 88     			LD (Erase_Line_Q1_M3),A		; Mod the code
+ 423+ 8861 32 BF 88     			LD (Erase_Line_Q2_M3),A
+ 424+ 8864 3E 0A        			LD A,0x0A			; Code for RRC D (CB 0A)
+ 425+ 8866 18 0D        			JR Erase_Line_X2		; Skip the next bit
+ 426+ 8868              ;
+ 427+ 8868              ; This bit of code mods the main loop for drawing right to left
+ 428+ 8868              ;
+ 429+ 8868 ED 44        Erase_Line_X1:		NEG				; The width of line is negative, so make it positive again
+ 430+ 886A 4F           			LD C,A				; Store the line width
+ 431+ 886B 3E 2D        			LD A,0x2D			; Code for DEC L
+ 432+ 886D 32 A5 88     			LD (Erase_Line_Q1_M3),A
+ 433+ 8870 32 BF 88     			LD (Erase_Line_Q2_M3),A
+ 434+ 8873 3E 02        			LD A,0x02			; Code for RLC D (CB 02)
+ 435+ 8875              ;
+ 436+ 8875              ; We've got the basic information at this point
+ 437+ 8875              ;
+ 438+ 8875 32 A2 88     Erase_Line_X2:		LD (Erase_Line_Q1_M2 + 1),A	; A contains the code for RLC D or RRC D, so make the mods
+ 439+ 8878 32 BC 88     			LD (Erase_Line_Q2_M2 + 1),A
+ 440+ 887B DD 56 00     			LD D,(IX+0)			; Get the pixel data from the Unplot_Point table
+ 441+ 887E 78           			LD A,B				; Check if B and C are 0
+ 442+ 887F B1           			OR C
+ 443+ 8880 20 04        			JR NZ,Erase_Line_Q		; There is a line to draw, so skip to the next bit
+ 444+ 8882 7E           			LD A,(HL)			; Here we've got a single point line, so plot and return
+ 445+ 8883 A2           			AND D
+ 446+ 8884 77           			LD (HL),A
+ 447+ 8885 C9           			RET
+ 448+ 8886              ;
+ 449+ 8886              ; At this point
+ 450+ 8886              ; HL = Screen address of the start point
+ 451+ 8886              ;  B = Line height
+ 452+ 8886              ;  C = Line width
+ 453+ 8886              ;  D = Pixel data
+ 454+ 8886              ;
+ 455+ 8886 78           Erase_Line_Q:		LD A,B				; Work out which diagonal we are on
+ 456+ 8887 B9           			CP C
+ 457+ 8888 30 22        			JR NC,Erase_Line_Q2
+ 458+ 888A              ;
+ 459+ 888A              ; This bit of code draws the line where B<C (more horizontal than vertical)
+ 460+ 888A              ;
+ 461+ 888A 79           Erase_Line_Q1:		LD A,C
+ 462+ 888B 32 9C 88     			LD (Erase_Line_Q1_M1 + 1),A	; Self-mod the code again to store the line width
+ 463+ 888E 48           			LD C,B
+ 464+ 888F 47           			LD B,A
+ 465+ 8890 58           			LD E,B				; Calculate the error value
+ 466+ 8891 CB 3B        			SRL E
+ 467+ 8893 7E           Erase_Line_Q1_L:	LD A,(HL)			; Unplot the pixel
+ 468+ 8894 A2           			AND D
+ 469+ 8895 77           			LD (HL),A
+ 470+ 8896 7B           			LD A,E
+ 471+ 8897 91           			SUB C
+ 472+ 8898 5F           			LD E,A
+ 473+ 8899 30 06        			JR NC,Erase_Line_Q1_M2
+ 474+ 889B C6 00        Erase_Line_Q1_M1:	ADD A,0				; Add the line height (previously stored; self modifying code)
+ 475+ 889D 5F           			LD E,A
+ 476+ 889E CD 0B 89     			CALL Pixel_Address_Down
+ 477+ 88A1 CB 0A        Erase_Line_Q1_M2:	RRC D				; Rotate the pixel right or left; more self-modifying code
+ 478+ 88A3 38 01        			JR C,Erase_Line_Q1_S		; Note the change here from the Draw_Line routine
+ 479+ 88A5 2C           Erase_Line_Q1_M3:	INC L				; If we get no carry then move to adjacent screen address; more self modifying code
+ 480+ 88A6 10 EB        Erase_Line_Q1_S:	DJNZ Erase_Line_Q1_L		; Loop until the line is drawn
+ 481+ 88A8 7E           Erase_Line_P:		LD A,(HL)			; Plot the final pixel
+ 482+ 88A9 A2           			AND D
+ 483+ 88AA 77           			LD (HL),A
+ 484+ 88AB C9           			RET
+ 485+ 88AC              ;
+ 486+ 88AC              ; This bit draws the line where B>=C (more vertical than horizontal, or diagonal)
+ 487+ 88AC              ;
+ 488+ 88AC 32 BA 88     Erase_Line_Q2:		LD (Erase_Line_Q2_M1 + 1),A
+ 489+ 88AF 58           			LD E,B				; Calculate the error value
+ 490+ 88B0 CB 3B        			SRL E
+ 491+ 88B2 7E           Erase_Line_Q2_L:	LD A,(HL)			; Unplot the pixel
+ 492+ 88B3 A2           			AND D
+ 493+ 88B4 77           			LD (HL),A
+ 494+ 88B5 7B           			LD A,E				; Get the error value
+ 495+ 88B6 91           			SUB C				; Add the line length to it (X2-X1)
+ 496+ 88B7 30 07        			JR NC,Erase_Line_Q2_S		; Skip the next bit if we don't get a carry
+ 497+ 88B9 C6 00        Erase_Line_Q2_M1: 	ADD A,0				; Add the line height (previously stored; self modifying code)
+ 498+ 88BB CB 0A        Erase_Line_Q2_M2:	RRC D				; Rotates the pixel right with carry
+ 499+ 88BD 38 01        			JR C,Erase_Line_Q2_S		; Note the change here from the Draw_Line routine
+ 500+ 88BF 2C           Erase_Line_Q2_M3:	INC L				; If we get no carry then move to adjacent screen address; more self modifying code
+ 501+ 88C0 5F           Erase_Line_Q2_S:	LD E,A				; Store the error value back in
+ 502+ 88C1 CD 0B 89     			CALL Pixel_Address_Down		; And also move down
+ 503+ 88C4 10 EC        			DJNZ Erase_Line_Q2_L
+ 504+ 88C6 18 E0        			JR Erase_Line_P			; Plot the final pixel
+ 505+ 88C8
+ 506+ 88C8              ; Note that the functions above only work if each of these tables are in a byte boundary
+ 507+ 88C8              ;
+ 508+ 88C8
+ 509+ 88C8              	ALIGN 8
+ 510+ 88C8 80 40 20 10  Plot_Point:		DB %10000000,%01000000,%00100000,%00010000,%00001000,%00000100,%00000010,%00000001
+ 510+ 88CC 08 04 02 01
+ 511+ 88D0 7F BF DF EF  Unplot_Point:	DB %01111111,%10111111,%11011111,%11101111,%11110111,%11111011,%11111101,%11111110
+ 511+ 88D4 F7 FB FD FE
+ 512+ 88D8
+ 513+ 88D8
+ 514+ 88D8
+ 515+ 88D8              ; Get screen address
+ 516+ 88D8              ; B = Y pixel position
+ 517+ 88D8              ; C = X pixel position
+ 518+ 88D8              ; Returns address in HL and pixel position within character in A
+ 519+ 88D8              ;
+ 520+ 88D8 78           Get_Pixel_Address:	LD A,B				; Calculate Y2,Y1,Y0
+ 521+ 88D9 E6 07        			AND %00000111			; Mask out unwanted bits
+ 522+ 88DB F6 40        			OR %01000000			; Set base address of screen
+ 523+ 88DD 67           			LD H,A				; Store in H
+ 524+ 88DE 78           			LD A,B				; Calculate Y7,Y6
+ 525+ 88DF 1F           			RRA				; Shift to position
+ 526+ 88E0 1F           			RRA
+ 527+ 88E1 1F           			RRA
+ 528+ 88E2 E6 18        			AND %00011000			; Mask out unwanted bits
+ 529+ 88E4 B4           			OR H				; OR with Y2,Y1,Y0
+ 530+ 88E5 67           			LD H,A				; Store in H
+ 531+ 88E6 78           			LD A,B				; Calculate Y5,Y4,Y3
+ 532+ 88E7 17           			RLA				; Shift to position
+ 533+ 88E8 17           			RLA
+ 534+ 88E9 E6 E0        			AND %11100000			; Mask out unwanted bits
+ 535+ 88EB 6F           			LD L,A				; Store in L
+ 536+ 88EC 79           			LD A,C				; Calculate X4,X3,X2,X1,X0
+ 537+ 88ED 1F           			RRA				; Shift into position
+ 538+ 88EE 1F           			RRA
+ 539+ 88EF 1F           			RRA
+ 540+ 88F0 E6 1F        			AND %00011111			; Mask out unwanted bits
+ 541+ 88F2 B5           			OR L				; OR with Y5,Y4,Y3
+ 542+ 88F3 6F           			LD L,A				; Store in L
+ 543+ 88F4 79           			LD A,C
+ 544+ 88F5 E6 07        			AND 7
+ 545+ 88F7 C9           			RET
+ 546+ 88F8
+ 547+ 88F8
+ 548+ 88F8
+ 549+ 88F8              ; Move HL down one pixel line
+ 550+ 88F8              ;
+ 551+ 88F8 24           Pixel_Address_Down_Color:	INC H	; Go down onto the next pixel line
+ 552+ 88F9 7C           			LD A,H				; Check if we have gone onto next character boundary
+ 553+ 88FA E6 07        			AND 7
+ 554+ 88FC C0           			RET NZ				; No, so skip the next bit
+ 555+ 88FD 7D           			LD A,L				; Go onto the next character line
+ 556+ 88FE C6 20        			ADD A,32
+ 557+ 8900 6F           			LD L,A
+ 558+ 8901
+ 559+ 8901 38 04        			jr C, pixel_address_attr	; Check if we have gone onto next third of screen
+ 560+ 8903 7C           			LD A,H				; Yes, so go onto next third
+ 561+ 8904 D6 08        			SUB 8
+ 562+ 8906 67           			LD H,A
+ 563+ 8907              pixel_address_attr:
+ 564+ 8907 CD 1A 89     			call screen_address_to_attr_write
+ 565+ 890A C9           			RET
+ 566+ 890B
+ 567+ 890B              ; Move HL down one pixel line
+ 568+ 890B              ;
+ 569+ 890B 24           Pixel_Address_Down:	INC H	; Go down onto the next pixel line
+ 570+ 890C 7C           			LD A,H				; Check if we have gone onto next character boundary
+ 571+ 890D E6 07        			AND 7
+ 572+ 890F C0           			RET NZ				; No, so skip the next bit
+ 573+ 8910 7D           			LD A,L				; Go onto the next character line
+ 574+ 8911 C6 20        			ADD A,32
+ 575+ 8913 6F           			LD L,A
+ 576+ 8914
+ 577+ 8914 D8           			RET C				; Check if we have gone onto next third of screen
+ 578+ 8915 7C           			LD A,H				; Yes, so go onto next third
+ 579+ 8916 D6 08        			SUB 8
+ 580+ 8918 67           			LD H,A
+ 581+ 8919 C9           			RET
+ 582+ 891A
+ 583+ 891A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 584+ 891A              ; screen_address_to_attr_write by nikhotmsk
+ 585+ 891A              ; hl - screen address
+ 586+ 891A              ; (color) - color to be written
+ 587+ 891A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 588+ 891A              screen_address_to_attr_write:
+ 589+ 891A F5           	push af
+ 590+ 891B E5           	push hl
+ 591+ 891C DD E5        	push ix
+ 592+ 891E D5           	push de
+ 593+ 891F 7C           	ld a, h
+ 594+ 8920 CB 1F        	rr a
+ 595+ 8922 CB 1F        	rr a
+ 596+ 8924 CB 1F        	rr a
+ 597+ 8926 E6 03        	and 0b00000011
+ 598+ 8928 F6 58        	or 0x58
+ 599+ 892A 67           	ld h, a
+ 600+ 892B              	; attr address ready
+ 601+ 892B
+ 602+ 892B DD 21 9E 9C  	ld ix, color_queue
+ 603+ 892F              	; add array index
+ 604+ 892F 3A FE 9C     	ld a, (color_queue_i)
+ 605+ 8932 B7           	or a ; clear carry
+ 606+ 8933 57           	ld d, a
+ 607+ 8934 87           	add a
+ 608+ 8935 82           	add d ; multiply by 3
+ 609+ 8936 5F           	ld e, a
+ 610+ 8937 16 00        	ld d, 0
+ 611+ 8939 DD 19        	add ix, de
+ 612+ 893B
+ 613+ 893B DD 75 00 DD  	ld (ix+0), hl
+ 613+ 893F 74 01
+ 614+ 8941 3A 17 94     	ld a, (color)
+ 615+ 8944 DD 77 02     	ld (ix+2), a
+ 616+ 8947
+ 617+ 8947              	; increment array index modulo
+ 618+ 8947 3A FE 9C     	ld a, (color_queue_i)
+ 619+ 894A 3C           	inc a
+ 620+ 894B E6 1F        	and 0b00011111 ; modulo 32
+ 621+ 894D 32 FE 9C     	ld (color_queue_i), a
+ 622+ 8950
+ 623+ 8950              	; one more time for shadow screen
+ 624+ 8950
+ 625+ 8950 CB FC        	set 7, h
+ 626+ 8952
+ 627+ 8952 DD 21 9E 9C  	ld ix, color_queue
+ 628+ 8956              	; add array index
+ 629+ 8956 3A FE 9C     	ld a, (color_queue_i)
+ 630+ 8959 B7           	or a ; clear carry
+ 631+ 895A 57           	ld d, a
+ 632+ 895B 87           	add a
+ 633+ 895C 82           	add d ; multiply by 3
+ 634+ 895D 5F           	ld e, a
+ 635+ 895E 16 00        	ld d, 0
+ 636+ 8960 DD 19        	add ix, de
+ 637+ 8962
+ 638+ 8962 DD 75 00 DD  	ld (ix+0), hl ; shadow screen
+ 638+ 8966 74 01
+ 639+ 8968 3A 17 94     	ld a, (color)
+ 640+ 896B DD 77 02     	ld (ix+2), a
+ 641+ 896E
+ 642+ 896E              	; increment array index modulo
+ 643+ 896E 3A FE 9C     	ld a, (color_queue_i)
+ 644+ 8971 3C           	inc a
+ 645+ 8972 E6 1F        	and 0b00011111 ; modulo 32
+ 646+ 8974 32 FE 9C     	ld (color_queue_i), a
+ 647+ 8977
+ 648+ 8977 D1           	pop de
+ 649+ 8978 DD E1        	pop ix
+ 650+ 897A E1           	pop hl
+ 651+ 897B F1           	pop af
+ 652+ 897C C9           	ret
+ 653+ 897D
+ 654+ 897D
+# file closed: vector.asm
+ 893  897D
+ 894  897D              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 895  897D              ; scanline fill by John Metcalf
+ 896  897D              ; call with d=x-coord, e=y-coord
+ 897  897D              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 898  897D
+ 899  897D              ; set end marker
+ 900  897D
+ 901  897D              fill:
+ 902  897D 2E FF          ld l,255
+ 903  897F E5             push hl
+ 904  8980
+ 905  8980              ; calculate bit position of pixel
+ 906  8980
+ 907  8980              nextrun:
+ 908  8980 7A             ld a,d
+ 909  8981 E6 07          and 7
+ 910  8983 3C             inc a
+ 911  8984 47             ld b,a
+ 912  8985 3E 01          ld a,1
+ 913  8987              bitpos:
+ 914  8987 0F             rrca
+ 915  8988 10 FD          djnz bitpos
+ 916  898A 48             ld c,b
+ 917  898B 47             ld b,a
+ 918  898C
+ 919  898C              ; move left until hitting a set pixel or the screen edge
+ 920  898C
+ 921  898C              seekleft:
+ 922  898C 7A             ld a,d
+ 923  898D B7             or a
+ 924  898E 28 0D          jr z,goright
+ 925  8990 15             dec d
+ 926  8991 CB 00          rlc b
+ 927  8993 CD B5 89       call scrpos
+ 928  8996 20 F4          jr nz,seekleft
+ 929  8998
+ 930  8998              ; move right until hitting a set pixel or the screen edge,
+ 931  8998              ; setting pixels as we go. Check rows above and below and
+ 932  8998              ; save their coordinates to fill later if necessary
+ 933  8998
+ 934  8998              seekright:
+ 935  8998 CB 08          rrc b
+ 936  899A 14             inc d
+ 937  899B 28 12          jr z,rightedge
+ 938  899D              goright:
+ 939  899D CD B5 89       call scrpos
+ 940  89A0 28 0D          jr z,rightedge
+ 941  89A2 77             ld (hl),a
+ 942  89A3 1C             inc e
+ 943  89A4 CD CF 89       call checkadj
+ 944  89A7 1D             dec e
+ 945  89A8 1D             dec e
+ 946  89A9 CD CF 89       call checkadj
+ 947  89AC 1C             inc e
+ 948  89AD 18 E9          jr seekright
+ 949  89AF
+ 950  89AF              ; check to see if there's another row waiting to be filled
+ 951  89AF
+ 952  89AF              rightedge:
+ 953  89AF D1             pop de
+ 954  89B0 7B             ld a,e
+ 955  89B1 3C             inc a
+ 956  89B2 20 CC          jr nz,nextrun
+ 957  89B4 C9             ret
+ 958  89B5
+ 959  89B5              ; calculate the pixel address and whether or not it's set
+ 960  89B5
+ 961  89B5              scrpos:
+ 962  89B5 7B             ld a,e
+ 963  89B6 E6 F8          and 248
+ 964  89B8 1F             rra
+ 965  89B9 37             scf
+ 966  89BA 1F             rra
+ 967  89BB 1F             rra
+ 968  89BC 6F             ld l,a
+ 969  89BD AB             xor e
+ 970  89BE E6 F8          and 248
+ 971  89C0 AB             xor e
+ 972  89C1 67             ld h,a
+ 973  89C2 7D             ld a,l
+ 974  89C3 AA             xor d
+ 975  89C4 E6 07          and 7
+ 976  89C6 AA             xor d
+ 977  89C7 0F             rrca
+ 978  89C8 0F             rrca
+ 979  89C9 0F             rrca
+ 980  89CA 6F             ld l,a
+ 981  89CB 78             ld a,b
+ 982  89CC B6             or (hl)
+ 983  89CD BE             cp (hl)
+ 984  89CE C9             ret
+ 985  89CF
+ 986  89CF              ; check and save the coordinates of an adjacent row
+ 987  89CF
+ 988  89CF              checkadj:
+ 989  89CF CB 21          sla c
+ 990  89D1 7B             ld a,e
+ 991  89D2 FE C0          cp 192
+ 992  89D4 D0             ret nc
+ 993  89D5 CD B6 89       call scrpos+1
+ 994  89D8 C8             ret z
+ 995  89D9 0C             inc c
+ 996  89DA CB 51          bit 2,c
+ 997  89DC C0             ret nz
+ 998  89DD E1             pop hl
+ 999  89DE D5             push de
+1000  89DF E9             jp (hl)
+1001  89E0
+1002  89E0
+1003  89E0              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1004  89E0              ; fischinger_draw_polyline
+1005  89E0              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1006  89E0              fischinger_draw_polyline:
+1007  89E0              polyline_speed:
+1008  89E0 06 02        	ld b, 2 ; speed of drawing
+1009  89E2              draw_polyline_cycle: ; draw logo
+1010  89E2              	;call interrupt_page_set_player_page
+1011  89E2
+1012  89E2 2A 1E 94     	ld hl, (polyline_pointer)
+1013  89E5 E5 DD E1     	ld ix, hl
+1014  89E8 DD 7E 00     	ld a, (ix+0)
+1015  89EB B7           	or a ; check zero
+1016  89EC 28 2C        	jr z, no_draw_polyline
+1017  89EE DD 7E 01     	ld a, (ix+1)
+1018  89F1
+1019  89F1 B7           	or a ; check zero
+1020  89F2 28 26        	jr z, no_draw_polyline
+1021  89F4 DD 7E 02     	ld a, (ix+2)
+1022  89F7 5F           	ld e, a
+1023  89F8 B7           	or a
+1024  89F9 28 1F        	jr z, no_draw_polyline
+1025  89FB DD 7E 03     	ld a, (ix+3)
+1026  89FE 57           	ld d, a
+1027  89FF B7           	or a
+1028  8A00 28 18        	jr z, no_draw_polyline
+1029  8A02
+1030  8A02 C5           	push bc
+1031  8A03 DD 4E 00     	ld c, (ix+0)
+1032  8A06 DD 46 01     	ld b, (ix+1)
+1033  8A09              	;
+1034  8A09              	; bc = Ya Xa
+1035  8A09              	; de = Yb Xb
+1036  8A09              	;
+1037  8A09              	; b = Ya c = Xa
+1038  8A09              	; d = Yb e = Xb
+1039  8A09              	;
+1040  8A09              	; call interrupt_page_set_7
+1041  8A09 CD A3 87     	call Draw_Line
+1042  8A0C              	; call interrupt_page_set_player_page
+1043  8A0C C1           	pop bc
+1044  8A0D
+1045  8A0D 2A 1E 94     	ld hl, (polyline_pointer)
+1046  8A10 23           	inc hl
+1047  8A11 23           	inc hl
+1048  8A12 23           	inc hl
+1049  8A13 23           	inc hl
+1050  8A14 22 1E 94     	ld (polyline_pointer), hl
+1051  8A17
+1052  8A17 05           	dec b
+1053  8A18 20 C8        	jr nz, draw_polyline_cycle
+1054  8A1A              no_draw_polyline:
+1055  8A1A C9           	ret
+1056  8A1B
+1057  8A1B              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1058  8A1B              ; end vector graphics
+1059  8A1B              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1060  8A1B              	INCLUDE "message.asm"
+# file opened: message.asm
+   1+ 8A1B              ;paths
+   2+ 8A1B              svg_vectors:
+   3+ 8A1B 28 38 2E 38  	BYTE 40,56,46,56
+   4+ 8A1F 28 38 2E 40  	BYTE 40,56,46,64
+   5+ 8A23 2E 40 31 40  	BYTE 46,64,49,64
+   6+ 8A27 31 40 31 38  	BYTE 49,64,49,56
+   7+ 8A2B 31 38 37 38  	BYTE 49,56,55,56
+   8+ 8A2F 37 38 37 50  	BYTE 55,56,55,80
+   9+ 8A33 37 50 31 50  	BYTE 55,80,49,80
+  10+ 8A37 31 50 31 44  	BYTE 49,80,49,68
+  11+ 8A3B 31 44 2E 44  	BYTE 49,68,46,68
+  12+ 8A3F 2E 44 2E 44  	BYTE 46,68,46,68
+  13+ 8A43 2E 50 28 50  	BYTE 46,80,40,80
+  14+ 8A47 28 50 28 38  	BYTE 40,80,40,56
+  15+ 8A4B
+  16+ 8A4B 36 38 45 38  	BYTE 54,56,69,56
+  17+ 8A4F 45 38 45 3B  	BYTE 69,56,69,59
+  18+ 8A53 45 3B 3C 3B  	BYTE 69,59,60,59
+  19+ 8A57 3C 3B 3C 3F  	BYTE 60,59,60,63
+  20+ 8A5B 3C 3F 42 3F  	BYTE 60,63,66,63
+  21+ 8A5F 42 3F 42 43  	BYTE 66,63,66,67
+  22+ 8A63 42 43 3C 43  	BYTE 66,67,60,67
+  23+ 8A67 3C 43 3C 4B  	BYTE 60,67,60,75
+  24+ 8A6B 3C 4B 45 4B  	BYTE 60,75,69,75
+  25+ 8A6F 45 4B 45 50  	BYTE 69,75,69,80
+  26+ 8A73 45 50 36 50  	BYTE 69,80,54,80
+  27+ 8A77 36 50 36 38  	BYTE 54,80,54,56
+  28+ 8A7B
+  29+ 8A7B 58 3A 5A 38  	BYTE 88,58,90,56
+  30+ 8A7F 5A 38 5E 38  	BYTE 90,56,94,56
+  31+ 8A83 5E 38 65 38  	BYTE 94,56,101,56
+  32+ 8A87 65 38 67 3A  	BYTE 101,56,103,58
+  33+ 8A8B 67 3A 67 42  	BYTE 103,58,103,66
+  34+ 8A8F 67 42 65 44  	BYTE 103,66,101,68
+  35+ 8A93 65 44 67 46  	BYTE 101,68,103,70
+  36+ 8A97 67 46 67 4E  	BYTE 103,70,103,78
+  37+ 8A9B 67 4E 65 50  	BYTE 103,78,101,80
+  38+ 8A9F 65 50 5A 50  	BYTE 101,80,90,80
+  39+ 8AA3 5A 50 58 4E  	BYTE 90,80,88,78
+  40+ 8AA7 58 4E 58 49  	BYTE 88,78,88,73
+  41+ 8AAB 58 49 5E 49  	BYTE 88,73,94,73
+  42+ 8AAF 5E 49 5E 4C  	BYTE 94,73,94,76
+  43+ 8AB3 5E 4C 61 4C  	BYTE 94,76,97,76
+  44+ 8AB7 61 4C 61 46  	BYTE 97,76,97,70
+  45+ 8ABB 61 46 5E 46  	BYTE 97,70,94,70
+  46+ 8ABF 5E 46 5E 42  	BYTE 94,70,94,66
+  47+ 8AC3 5E 42 61 42  	BYTE 94,66,97,66
+  48+ 8AC7 61 42 61 3C  	BYTE 97,66,97,60
+  49+ 8ACB 61 3C 5E 3C  	BYTE 97,60,94,60
+  50+ 8ACF 5E 3C 5E 3F  	BYTE 94,60,94,63
+  51+ 8AD3 5E 3F 58 3F  	BYTE 94,63,88,63
+  52+ 8AD7 58 3F 58 3A  	BYTE 88,63,88,58
+  53+ 8ADB
+  54+ 8ADB 6D 38 72 38  	BYTE 109,56,114,56
+  55+ 8ADF 72 38 77 50  	BYTE 114,56,119,80
+  56+ 8AE3 77 50 72 50  	BYTE 119,80,114,80
+  57+ 8AE7 72 50 71 4E  	BYTE 114,80,113,78
+  58+ 8AEB 71 4E 6E 4E  	BYTE 113,78,110,78
+  59+ 8AEF 6E 4E 6D 50  	BYTE 110,78,109,80
+  60+ 8AF3 6D 50 68 50  	BYTE 109,80,104,80
+  61+ 8AF7 68 50 6D 38  	BYTE 104,80,109,56
+  62+ 8AFB 70 44 71 4A  	BYTE 112,68,113,74
+  63+ 8AFF 71 4A 6F 4A  	BYTE 113,74,111,74
+  64+ 8B03 6F 4A 66 44  	BYTE 111,74,102,68
+  65+ 8B07
+  66+ 8B07 78 38 87 38  	BYTE 120,56,135,56
+  67+ 8B0B 87 38 87 3C  	BYTE 135,56,135,60
+  68+ 8B0F 87 3C 7E 3C  	BYTE 135,60,126,60
+  69+ 8B13 7E 3C 7E 40  	BYTE 126,60,126,64
+  70+ 8B17 7E 40 85 40  	BYTE 126,64,133,64
+  71+ 8B1B 85 40 87 42  	BYTE 133,64,135,66
+  72+ 8B1F 87 42 87 4E  	BYTE 135,66,135,78
+  73+ 8B23 87 4E 85 50  	BYTE 135,78,133,80
+  74+ 8B27 85 50 78 50  	BYTE 133,80,120,80
+  75+ 8B2B 78 50 78 38  	BYTE 120,80,120,56
+  76+ 8B2F 7E 43 81 43  	BYTE 126,67,129,67
+  77+ 8B33 81 43 81 4C  	BYTE 129,67,129,76
+  78+ 8B37 81 4C 7E 4C  	BYTE 129,76,126,76
+  79+ 8B3B 7E 4C 7E 43  	BYTE 126,76,126,67
+  80+ 8B3F
+  81+ 8B3F 88 38 8E 38  	BYTE 136,56,142,56
+  82+ 8B43 8E 38 8E 40  	BYTE 142,56,142,64
+  83+ 8B47 8E 40 91 40  	BYTE 142,64,145,64
+  84+ 8B4B 91 40 91 38  	BYTE 145,64,145,56
+  85+ 8B4F 91 38 97 38  	BYTE 145,56,151,56
+  86+ 8B53 97 38 97 4E  	BYTE 151,56,151,78
+  87+ 8B57 97 4E 95 50  	BYTE 151,78,149,80
+  88+ 8B5B 95 50 8A 50  	BYTE 149,80,138,80
+  89+ 8B5F 8A 50 88 4E  	BYTE 138,80,136,78
+  90+ 8B63 88 4E 88 4A  	BYTE 136,78,136,74
+  91+ 8B67 88 4A 8E 4A  	BYTE 136,74,142,74
+  92+ 8B6B 8E 4A 8E 4C  	BYTE 142,74,142,76
+  93+ 8B6F 8E 4C 91 4C  	BYTE 142,76,145,76
+  94+ 8B73 91 4C 91 44  	BYTE 145,76,145,68
+  95+ 8B77 91 44 8A 44  	BYTE 145,68,138,68
+  96+ 8B7B 8A 44 88 42  	BYTE 138,68,136,66
+  97+ 8B7F 88 42 88 38  	BYTE 136,66,136,56
+  98+ 8B83
+  99+ 8B83 9C 38 A3 38  	BYTE 156,56,163,56
+ 100+ 8B87 A3 38 A5 3A  	BYTE 163,56,165,58
+ 101+ 8B8B A5 3A A5 4B  	BYTE 165,58,165,75
+ 102+ 8B8F A5 4B A7 4B  	BYTE 165,75,167,75
+ 103+ 8B93 A7 4B A7 50  	BYTE 167,75,167,80
+ 104+ 8B97 A7 50 A1 50  	BYTE 167,80,161,80
+ 105+ 8B9B A1 50 A1 4F  	BYTE 161,80,161,79
+ 106+ 8B9F A1 4F 9E 4F  	BYTE 161,79,158,79
+ 107+ 8BA3 9E 4F 9E 50  	BYTE 158,79,158,80
+ 108+ 8BA7 9E 50 98 50  	BYTE 158,80,152,80
+ 109+ 8BAB 98 50 98 4B  	BYTE 152,80,152,75
+ 110+ 8BAF 98 4B 9A 4B  	BYTE 152,75,154,75
+ 111+ 8BB3 9A 4B 9A 3A  	BYTE 154,75,154,58
+ 112+ 8BB7 9A 3A 9C 38  	BYTE 154,58,156,56
+ 113+ 8BBB 9E 3C A1 3C  	BYTE 158,60,161,60
+ 114+ 8BBF A1 3C A1 4B  	BYTE 161,60,161,75
+ 115+ 8BC3 A1 4B 9E 4B  	BYTE 161,75,158,75
+ 116+ 8BC7 9E 4B 9E 3C  	BYTE 158,75,158,60
+ 117+ 8BCB
+ 118+ 8BCB A8 38 AE 38  	BYTE 168,56,174,56
+ 119+ 8BCF AE 38 AE 40  	BYTE 174,56,174,64
+ 120+ 8BD3 AE 40 B5 40  	BYTE 174,64,181,64
+ 121+ 8BD7 B5 40 B7 42  	BYTE 181,64,183,66
+ 122+ 8BDB B7 42 B7 4E  	BYTE 183,66,183,78
+ 123+ 8BDF B7 4E B5 50  	BYTE 183,78,181,80
+ 124+ 8BE3 B5 50 A8 50  	BYTE 181,80,168,80
+ 125+ 8BE7 A8 50 A8 38  	BYTE 168,80,168,56
+ 126+ 8BEB B0 44 B3 44  	BYTE 176,68,179,68
+ 127+ 8BEF B3 44 B3 4C  	BYTE 179,68,179,76
+ 128+ 8BF3 B3 4C B0 4C  	BYTE 179,76,176,76
+ 129+ 8BF7 B0 4C B0 44  	BYTE 176,76,176,68
+ 130+ 8BFB
+ 131+ 8BFB B8 38 C7 38  	BYTE 184,56,199,56
+ 132+ 8BFF C7 38 C7 3C  	BYTE 199,56,199,60
+ 133+ 8C03 C7 3C C2 3C  	BYTE 199,60,194,60
+ 134+ 8C07 C2 3C C2 50  	BYTE 194,60,194,80
+ 135+ 8C0B C2 50 BD 50  	BYTE 194,80,189,80
+ 136+ 8C0F BD 50 BD 3C  	BYTE 189,80,189,60
+ 137+ 8C13 BD 3C B8 3C  	BYTE 189,60,184,60
+ 138+ 8C17 B8 3C B8 38  	BYTE 184,60,184,56
+ 139+ 8C1B
+ 140+ 8C1B C8 38 D7 38  	BYTE 200,56,215,56
+ 141+ 8C1F D7 38 D7 3C  	BYTE 215,56,215,60
+ 142+ 8C23 D7 3C CE 3C  	BYTE 215,60,206,60
+ 143+ 8C27 CE 3C CE 40  	BYTE 206,60,206,64
+ 144+ 8C2B CE 40 D4 40  	BYTE 206,64,212,64
+ 145+ 8C2F D4 40 D4 44  	BYTE 212,64,212,68
+ 146+ 8C33 D4 44 CE 44  	BYTE 212,68,206,68
+ 147+ 8C37 CE 44 CE 4C  	BYTE 206,68,206,76
+ 148+ 8C3B CE 4C D7 4C  	BYTE 206,76,215,76
+ 149+ 8C3F D7 4C D7 50  	BYTE 215,76,215,80
+ 150+ 8C43 D7 50 C8 50  	BYTE 215,80,200,80
+ 151+ 8C47 C8 50 C8 38  	BYTE 200,80,200,56
+ 152+ 8C4B
+ 153+ 8C4B 2C 58 3C 58  	BYTE 44,88,60,88
+ 154+ 8C4F 3C 58 3E 5A  	BYTE 60,88,62,90
+ 155+ 8C53 3E 5A 3E 5E  	BYTE 62,90,62,94
+ 156+ 8C57 3E 5E 3D 60  	BYTE 62,94,61,96
+ 157+ 8C5B 3D 60 3F 62  	BYTE 61,96,63,98
+ 158+ 8C5F 3F 62 3F 6D  	BYTE 63,98,63,109
+ 159+ 8C63 3F 6D 3C 70  	BYTE 63,109,60,112
+ 160+ 8C67 3C 70 30 70  	BYTE 60,112,48,112
+ 161+ 8C6B 30 70 2C 58  	BYTE 48,112,44,88
+ 162+ 8C6F 36 5C 2F 5C  	BYTE 54,92,47,92
+ 163+ 8C73 39 5C 39 5E  	BYTE 57,92,57,94
+ 164+ 8C77 39 5E 36 5E  	BYTE 57,94,54,94
+ 165+ 8C7B 36 5E 36 5C  	BYTE 54,94,54,92
+ 166+ 8C7F 36 62 39 62  	BYTE 54,98,57,98
+ 167+ 8C83 39 62 39 76  	BYTE 57,98,57,118
+ 168+ 8C87 39 76 36 76  	BYTE 57,118,54,118
+ 169+ 8C8B 36 76 36 62  	BYTE 54,118,54,98
+ 170+ 8C8F
+ 171+ 8C8F 40 58 46 58  	BYTE 64,88,70,88
+ 172+ 8C93 46 58 46 60  	BYTE 70,88,70,96
+ 173+ 8C97 46 60 4D 60  	BYTE 70,96,77,96
+ 174+ 8C9B 4D 60 4F 62  	BYTE 77,96,79,98
+ 175+ 8C9F 4F 62 4F 6E  	BYTE 79,98,79,110
+ 176+ 8CA3 4F 6E 4D 70  	BYTE 79,110,77,112
+ 177+ 8CA7 4D 70 40 70  	BYTE 77,112,64,112
+ 178+ 8CAB 40 70 40 58  	BYTE 64,112,64,88
+ 179+ 8CAF 46 64 49 64  	BYTE 70,100,73,100
+ 180+ 8CB3 49 64 49 6C  	BYTE 73,100,73,108
+ 181+ 8CB7 49 6C 46 6C  	BYTE 73,108,70,108
+ 182+ 8CBB 46 6C 46 64  	BYTE 70,108,70,100
+ 183+ 8CBF 50 58 57 58  	BYTE 80,88,87,88
+ 184+ 8CC3 57 58 57 70  	BYTE 87,88,87,112
+ 185+ 8CC7 57 70 50 70  	BYTE 87,112,80,112
+ 186+ 8CCB 50 70 50 58  	BYTE 80,112,80,88
+ 187+ 8CCF
+ 188+ 8CCF 58 58 5E 58  	BYTE 88,88,94,88
+ 189+ 8CD3 5E 58 5E 60  	BYTE 94,88,94,96
+ 190+ 8CD7 5E 60 61 5D  	BYTE 94,96,97,93
+ 191+ 8CDB 61 5D 61 58  	BYTE 97,93,97,88
+ 192+ 8CDF 61 58 67 58  	BYTE 97,88,103,88
+ 193+ 8CE3 67 58 67 5D  	BYTE 103,88,103,93
+ 194+ 8CE7 67 5D 64 60  	BYTE 103,93,100,96
+ 195+ 8CEB 64 60 67 63  	BYTE 100,96,103,99
+ 196+ 8CEF 67 63 67 70  	BYTE 103,99,103,112
+ 197+ 8CF3 67 70 61 70  	BYTE 103,112,97,112
+ 198+ 8CF7 61 70 61 65  	BYTE 97,112,97,101
+ 199+ 8CFB 61 65 60 64  	BYTE 97,101,96,100
+ 200+ 8CFF 60 64 5E 66  	BYTE 96,100,94,102
+ 201+ 8D03 5E 66 5E 70  	BYTE 94,102,94,112
+ 202+ 8D07 5E 70 58 70  	BYTE 94,112,88,112
+ 203+ 8D0B 58 70 58 58  	BYTE 88,112,88,88
+ 204+ 8D0F
+ 205+ 8D0F 6C 58 77 58  	BYTE 108,88,119,88
+ 206+ 8D13 77 58 77 70  	BYTE 119,88,119,112
+ 207+ 8D17 77 70 72 70  	BYTE 119,112,114,112
+ 208+ 8D1B 72 70 72 5C  	BYTE 114,112,114,92
+ 209+ 8D1F 72 5C 6F 5C  	BYTE 114,92,111,92
+ 210+ 8D23 6F 5C 6F 6E  	BYTE 111,92,111,110
+ 211+ 8D27 6F 6E 6D 70  	BYTE 111,110,109,112
+ 212+ 8D2B 6D 70 68 70  	BYTE 109,112,104,112
+ 213+ 8D2F 68 70 68 6C  	BYTE 104,112,104,108
+ 214+ 8D33 68 6C 6A 6C  	BYTE 104,108,106,108
+ 215+ 8D37 6A 6C 6A 5A  	BYTE 106,108,106,90
+ 216+ 8D3B 6A 5A 6C 58  	BYTE 106,90,108,88
+ 217+ 8D3F
+ 218+ 8D3F 78 58 7E 58  	BYTE 120,88,126,88
+ 219+ 8D43 7E 58 7E 60  	BYTE 126,88,126,96
+ 220+ 8D47 7E 60 81 60  	BYTE 126,96,129,96
+ 221+ 8D4B 81 60 81 5B  	BYTE 129,96,129,91
+ 222+ 8D4F 81 5B 84 58  	BYTE 129,91,132,88
+ 223+ 8D53 84 58 8C 58  	BYTE 132,88,140,88
+ 224+ 8D57 8C 58 8F 5B  	BYTE 140,88,143,91
+ 225+ 8D5B 8F 5B 8F 6D  	BYTE 143,91,143,109
+ 226+ 8D5F 8F 6D 8C 70  	BYTE 143,109,140,112
+ 227+ 8D63 8C 70 84 70  	BYTE 140,112,132,112
+ 228+ 8D67 84 70 81 6D  	BYTE 132,112,129,109
+ 229+ 8D6B 81 6D 81 5A  	BYTE 129,109,129,90
+ 230+ 8D6F 81 5A 7E 5A  	BYTE 129,90,126,90
+ 231+ 8D73 7E 5A 7E 70  	BYTE 126,90,126,112
+ 232+ 8D77 7E 70 78 70  	BYTE 126,112,120,112
+ 233+ 8D7B 78 70 78 58  	BYTE 120,112,120,88
+ 234+ 8D7F 66 5C 6A 5C  	BYTE 102,92,106,92
+ 235+ 8D83 6A 5C 6A 6C  	BYTE 106,92,106,108
+ 236+ 8D87 6A 6C 66 6C  	BYTE 106,108,102,108
+ 237+ 8D8B 66 6C 66 5C  	BYTE 102,108,102,92
+ 238+ 8D8F
+ 239+ 8D8F 90 58 96 58  	BYTE 144,88,150,88
+ 240+ 8D93 96 58 96 62  	BYTE 150,88,150,98
+ 241+ 8D97 96 62 99 62  	BYTE 150,98,153,98
+ 242+ 8D9B 99 62 99 58  	BYTE 153,98,153,88
+ 243+ 8D9F 99 58 9F 58  	BYTE 153,88,159,88
+ 244+ 8DA3 9F 58 9F 70  	BYTE 159,88,159,112
+ 245+ 8DA7 9F 70 99 70  	BYTE 159,112,153,112
+ 246+ 8DAB 99 70 99 66  	BYTE 153,112,153,102
+ 247+ 8DAF 99 66 92 66  	BYTE 153,102,146,102
+ 248+ 8DB3 92 66 90 64  	BYTE 146,102,144,100
+ 249+ 8DB7 90 64 90 58  	BYTE 144,100,144,88
+ 250+ 8DBB
+ 251+ 8DBB A0 58 A6 58  	BYTE 160,88,166,88
+ 252+ 8DBF A6 58 A6 68  	BYTE 166,88,166,104
+ 253+ 8DC3 A6 68 A9 65  	BYTE 166,104,169,101
+ 254+ 8DC7 A9 65 A9 58  	BYTE 169,101,169,88
+ 255+ 8DCB A9 58 AF 58  	BYTE 169,88,175,88
+ 256+ 8DCF AF 58 AF 70  	BYTE 175,88,175,112
+ 257+ 8DD3 AF 70 A9 70  	BYTE 175,112,169,112
+ 258+ 8DD7 A9 70 A9 6B  	BYTE 169,112,169,107
+ 259+ 8DDB A9 6B A6 6E  	BYTE 169,107,166,110
+ 260+ 8DDF A6 6E A6 70  	BYTE 166,110,166,112
+ 261+ 8DE3 A6 70 A0 70  	BYTE 166,112,160,112
+ 262+ 8DE7 A0 70 A0 58  	BYTE 160,112,160,88
+ 263+ 8DEB
+ 264+ 8DEB B0 58 BF 58  	BYTE 176,88,191,88
+ 265+ 8DEF BF 58 BF 5C  	BYTE 191,88,191,92
+ 266+ 8DF3 BF 5C BA 5C  	BYTE 191,92,186,92
+ 267+ 8DF7 BA 5C BA 70  	BYTE 186,92,186,112
+ 268+ 8DFB BA 70 B5 70  	BYTE 186,112,181,112
+ 269+ 8DFF B5 70 B5 5C  	BYTE 181,112,181,92
+ 270+ 8E03 B5 5C B0 5C  	BYTE 181,92,176,92
+ 271+ 8E07 B0 5C B0 58  	BYTE 176,92,176,88
+ 272+ 8E0B
+ 273+ 8E0B C0 58 C6 58  	BYTE 192,88,198,88
+ 274+ 8E0F C6 58 C6 60  	BYTE 198,88,198,96
+ 275+ 8E13 C6 60 CD 60  	BYTE 198,96,205,96
+ 276+ 8E17 CD 60 CF 62  	BYTE 205,96,207,98
+ 277+ 8E1B CF 62 CF 6E  	BYTE 207,98,207,110
+ 278+ 8E1F CF 6E CD 70  	BYTE 207,110,205,112
+ 279+ 8E23 CD 70 C0 70  	BYTE 205,112,192,112
+ 280+ 8E27 C0 70 C0 58  	BYTE 192,112,192,88
+ 281+ 8E2B C6 64 C9 64  	BYTE 198,100,201,100
+ 282+ 8E2F C9 64 C9 6C  	BYTE 201,100,201,108
+ 283+ 8E33 C9 6C C6 6C  	BYTE 201,108,198,108
+ 284+ 8E37 C6 6C C6 64  	BYTE 198,108,198,100
+ 285+ 8E3B
+ 286+ 8E3B 30 78 3F 78  	BYTE 48,120,63,120
+ 287+ 8E3F 3F 78 3F 7C  	BYTE 63,120,63,124
+ 288+ 8E43 3F 7C 3A 7C  	BYTE 63,124,58,124
+ 289+ 8E47 3A 7C 3A 90  	BYTE 58,124,58,144
+ 290+ 8E4B 3A 90 35 90  	BYTE 58,144,53,144
+ 291+ 8E4F 35 90 35 7C  	BYTE 53,144,53,124
+ 292+ 8E53 35 7C 30 7C  	BYTE 53,124,48,124
+ 293+ 8E57 30 7C 30 78  	BYTE 48,124,48,120
+ 294+ 8E5B
+ 295+ 8E5B 40 78 4F 78  	BYTE 64,120,79,120
+ 296+ 8E5F 4F 78 4F 7C  	BYTE 79,120,79,124
+ 297+ 8E63 4F 7C 46 7C  	BYTE 79,124,70,124
+ 298+ 8E67 46 7C 46 80  	BYTE 70,124,70,128
+ 299+ 8E6B 46 80 4C 80  	BYTE 70,128,76,128
+ 300+ 8E6F 4C 80 4C 84  	BYTE 76,128,76,132
+ 301+ 8E73 4C 84 46 84  	BYTE 76,132,70,132
+ 302+ 8E77 46 84 46 8C  	BYTE 70,132,70,140
+ 303+ 8E7B 46 8C 4F 8C  	BYTE 70,140,79,140
+ 304+ 8E7F 4F 8C 4F 8C  	BYTE 79,140,79,140
+ 305+ 8E83 4F 90 40 90  	BYTE 79,144,64,144
+ 306+ 8E87 40 90 40 78  	BYTE 64,144,64,120
+ 307+ 8E8B
+ 308+ 8E8B 54 78 5F 78  	BYTE 84,120,95,120
+ 309+ 8E8F 5F 78 5F 90  	BYTE 95,120,95,144
+ 310+ 8E93 5F 90 5A 90  	BYTE 95,144,90,144
+ 311+ 8E97 5A 90 5A 7C  	BYTE 90,144,90,124
+ 312+ 8E9B 5A 7C 57 7C  	BYTE 90,124,87,124
+ 313+ 8E9F 57 7C 57 8E  	BYTE 87,124,87,142
+ 314+ 8EA3 57 8E 55 90  	BYTE 87,142,85,144
+ 315+ 8EA7 55 90 50 90  	BYTE 85,144,80,144
+ 316+ 8EAB 50 90 50 8C  	BYTE 80,144,80,140
+ 317+ 8EAF 50 8C 52 8C  	BYTE 80,140,82,140
+ 318+ 8EB3 52 8C 52 7A  	BYTE 82,140,82,122
+ 319+ 8EB7 52 7A 54 78  	BYTE 82,122,84,120
+ 320+ 8EBB
+ 321+ 8EBB 60 78 6F 78  	BYTE 96,120,111,120
+ 322+ 8EBF 6F 78 6F 7C  	BYTE 111,120,111,124
+ 323+ 8EC3 6F 7C 66 7C  	BYTE 111,124,102,124
+ 324+ 8EC7 66 7C 66 80  	BYTE 102,124,102,128
+ 325+ 8ECB 66 80 6C 80  	BYTE 102,128,108,128
+ 326+ 8ECF 6C 80 6C 84  	BYTE 108,128,108,132
+ 327+ 8ED3 6C 84 66 84  	BYTE 108,132,102,132
+ 328+ 8ED7 66 84 66 8C  	BYTE 102,132,102,140
+ 329+ 8EDB 66 8C 6F 8C  	BYTE 102,140,111,140
+ 330+ 8EDF 6F 8C 6F 90  	BYTE 111,140,111,144
+ 331+ 8EE3 6F 90 60 90  	BYTE 111,144,96,144
+ 332+ 8EE7 60 90 60 78  	BYTE 96,144,96,120
+ 333+ 8EEB
+ 334+ 8EEB 70 78 7C 78  	BYTE 112,120,124,120
+ 335+ 8EEF 7C 78 7E 7A  	BYTE 124,120,126,122
+ 336+ 8EF3 7E 7A 7E 7E  	BYTE 126,122,126,126
+ 337+ 8EF7 7E 7E 7D 80  	BYTE 126,126,125,128
+ 338+ 8EFB 7D 80 7F 82  	BYTE 125,128,127,130
+ 339+ 8EFF 7F 82 7F 8D  	BYTE 127,130,127,141
+ 340+ 8F03 7F 8D 7C 90  	BYTE 127,141,124,144
+ 341+ 8F07 7C 90 70 90  	BYTE 124,144,112,144
+ 342+ 8F0B 70 90 70 78  	BYTE 112,144,112,120
+ 343+ 8F0F 76 7C 79 7C  	BYTE 118,124,121,124
+ 344+ 8F13 79 7C 79 7E  	BYTE 121,124,121,126
+ 345+ 8F17 79 7E 76 7E  	BYTE 121,126,118,126
+ 346+ 8F1B 76 7E 76 7C  	BYTE 118,126,118,124
+ 347+ 8F1F 76 82 79 82  	BYTE 118,130,121,130
+ 348+ 8F23 79 82 79 8C  	BYTE 121,130,121,140
+ 349+ 8F27 79 8C 76 8C  	BYTE 121,140,118,140
+ 350+ 8F2B 76 8C 76 82  	BYTE 118,140,118,130
+ 351+ 8F2F
+ 352+ 8F2F 80 78 86 78  	BYTE 128,120,134,120
+ 353+ 8F33 86 78 86 88  	BYTE 134,120,134,136
+ 354+ 8F37 86 88 89 85  	BYTE 134,136,137,133
+ 355+ 8F3B 89 85 89 78  	BYTE 137,133,137,120
+ 356+ 8F3F 89 78 8F 78  	BYTE 137,120,143,120
+ 357+ 8F43 8F 78 8F 90  	BYTE 143,120,143,144
+ 358+ 8F47 8F 90 89 90  	BYTE 143,144,137,144
+ 359+ 8F4B 89 90 89 8B  	BYTE 137,144,137,139
+ 360+ 8F4F 89 8B 86 8E  	BYTE 137,139,134,142
+ 361+ 8F53 86 8E 86 90  	BYTE 134,142,134,144
+ 362+ 8F57 86 90 80 90  	BYTE 134,144,128,144
+ 363+ 8F5B 80 90 80 78  	BYTE 128,144,128,120
+ 364+ 8F5F
+ 365+ 8F5F 92 78 9D 78  	BYTE 146,120,157,120
+ 366+ 8F63 9D 78 9F 7A  	BYTE 157,120,159,122
+ 367+ 8F67 9F 7A 9F 82  	BYTE 159,122,159,130
+ 368+ 8F6B 9F 82 9D 84  	BYTE 159,130,157,132
+ 369+ 8F6F 9D 84 9F 86  	BYTE 157,132,159,134
+ 370+ 8F73 9F 86 9F 8E  	BYTE 159,134,159,142
+ 371+ 8F77 9F 8E 9D 90  	BYTE 159,142,157,144
+ 372+ 8F7B 9D 90 92 90  	BYTE 157,144,146,144
+ 373+ 8F7F 92 90 90 8E  	BYTE 146,144,144,142
+ 374+ 8F83 90 8E 90 89  	BYTE 144,142,144,137
+ 375+ 8F87 90 89 96 89  	BYTE 144,137,150,137
+ 376+ 8F8B 96 89 96 8C  	BYTE 150,137,150,140
+ 377+ 8F8F 96 8C 99 8C  	BYTE 150,140,153,140
+ 378+ 8F93 99 8C 99 86  	BYTE 153,140,153,134
+ 379+ 8F97 99 86 96 86  	BYTE 153,134,150,134
+ 380+ 8F9B 96 86 96 82  	BYTE 150,134,150,130
+ 381+ 8F9F 96 82 99 82  	BYTE 150,130,153,130
+ 382+ 8FA3 99 82 99 7C  	BYTE 153,130,153,124
+ 383+ 8FA7 99 7C 96 7C  	BYTE 153,124,150,124
+ 384+ 8FAB 96 7C 96 7F  	BYTE 150,124,150,127
+ 385+ 8FAF 96 7F 90 7F  	BYTE 150,127,144,127
+ 386+ 8FB3 90 7F 92 78  	BYTE 144,127,146,120
+ 387+ 8FB7
+ 388+ 8FB7 A3 78 AC 78  	BYTE 163,120,172,120
+ 389+ 8FBB AC 78 AF 7B  	BYTE 172,120,175,123
+ 390+ 8FBF AF 7B AF 8D  	BYTE 175,123,175,141
+ 391+ 8FC3 AF 8D AC 90  	BYTE 175,141,172,144
+ 392+ 8FC7 AC 90 A3 90  	BYTE 172,144,163,144
+ 393+ 8FCB A3 90 A0 8D  	BYTE 163,144,160,141
+ 394+ 8FCF A0 8D A0 7B  	BYTE 160,141,160,123
+ 395+ 8FD3 A0 7B A3 78  	BYTE 160,123,163,120
+ 396+ 8FD7 A6 7C A9 7C  	BYTE 166,124,169,124
+ 397+ 8FDB A9 7C A9 8C  	BYTE 169,124,169,140
+ 398+ 8FDF A9 8C A6 8C  	BYTE 169,140,166,140
+ 399+ 8FE3 A6 8C A6 7C  	BYTE 166,140,166,124
+ 400+ 8FE7
+ 401+ 8FE7 B0 78 BD 78  	BYTE 176,120,189,120
+ 402+ 8FEB BD 78 BF 7A  	BYTE 189,120,191,122
+ 403+ 8FEF BF 7A BF 86  	BYTE 191,122,191,134
+ 404+ 8FF3 BF 86 BD 88  	BYTE 191,134,189,136
+ 405+ 8FF7 BD 88 B6 88  	BYTE 189,136,182,136
+ 406+ 8FFB B6 88 B6 90  	BYTE 182,136,182,144
+ 407+ 8FFF B6 90 B0 90  	BYTE 182,144,176,144
+ 408+ 9003 B0 90 B0 78  	BYTE 176,144,176,120
+ 409+ 9007 B6 7C B9 7C  	BYTE 182,124,185,124
+ 410+ 900B B9 7C B9 84  	BYTE 185,124,185,132
+ 411+ 900F B9 84 B6 84  	BYTE 185,132,182,132
+ 412+ 9013 B6 84 B6 7C  	BYTE 182,132,182,124
+ 413+ 9017
+ 414+ 9017 C8 7C CF 7C  	BYTE 200,124,207,124
+ 415+ 901B CF 7C CF 85  	BYTE 207,124,207,133
+ 416+ 901F CF 85 CD 87  	BYTE 207,133,205,135
+ 417+ 9023 CD 87 CA 87  	BYTE 205,135,202,135
+ 418+ 9027 CA 87 C8 85  	BYTE 202,135,200,133
+ 419+ 902B C8 85 C8 7C  	BYTE 200,133,200,124
+ 420+ 902F CA 89 CD 89  	BYTE 202,137,205,137
+ 421+ 9033 CD 89 CF 8B  	BYTE 205,137,207,139
+ 422+ 9037 CF 8B CF 8E  	BYTE 207,139,207,142
+ 423+ 903B CF 8E CD 90  	BYTE 207,142,205,144
+ 424+ 903F CD 90 CA 90  	BYTE 205,144,202,144
+ 425+ 9043 CA 90 C8 8E  	BYTE 202,144,200,142
+ 426+ 9047 C8 8E C8 8B  	BYTE 200,142,200,139
+ 427+ 904B C8 8B CA 89  	BYTE 200,139,202,137
+ 428+ 904F
+ 429+ 904F 00 48 60 00  	BYTE 0,72,96,0
+ 430+ 9053 A0 00 FF 48  	BYTE 160,0,255,72
+ 431+ 9057 00 78 60 BF  	BYTE 0,120,96,191
+ 432+ 905B A0 BF FF 78  	BYTE 160,191,255,120
+ 433+ 905F
+ 434+ 905F              ;points
+ 435+ 905F              fill_points:
+ 436+ 905F 01 01        	BYTE 1,1
+ 437+ 9061 FE 01        	BYTE 254,1
+ 438+ 9063 01 79        	BYTE 1,121
+ 439+ 9065 FE 79        	BYTE 254,121
+ 440+ 9067
+ 441+ 9067 29 39        	BYTE 41,57
+ 442+ 9069 37 39        	BYTE 55,57
+ 443+ 906B 59 3B        	BYTE 89,59
+ 444+ 906D 6E 39        	BYTE 110,57
+ 445+ 906F 79 39        	BYTE 121,57
+ 446+ 9071 89 39        	BYTE 137,57
+ 447+ 9073 9D 39        	BYTE 157,57
+ 448+ 9075 A9 39        	BYTE 169,57
+ 449+ 9077 B9 39        	BYTE 185,57
+ 450+ 9079 C9 39        	BYTE 201,57
+ 451+ 907B 31 59        	BYTE 49,89
+ 452+ 907D 41 59        	BYTE 65,89
+ 453+ 907F 51 59        	BYTE 81,89
+ 454+ 9081 59 59        	BYTE 89,89
+ 455+ 9083 6D 59        	BYTE 109,89
+ 456+ 9085 79 59        	BYTE 121,89
+ 457+ 9087 91 59        	BYTE 145,89
+ 458+ 9089 A1 59        	BYTE 161,89
+ 459+ 908B B1 59        	BYTE 177,89
+ 460+ 908D C1 59        	BYTE 193,89
+ 461+ 908F 31 79        	BYTE 49,121
+ 462+ 9091 41 79        	BYTE 65,121
+ 463+ 9093 55 79        	BYTE 85,121
+ 464+ 9095 61 79        	BYTE 97,121
+ 465+ 9097 71 79        	BYTE 113,121
+ 466+ 9099 81 79        	BYTE 129,121
+ 467+ 909B 93 79        	BYTE 147,121
+ 468+ 909D A4 79        	BYTE 164,121
+ 469+ 909F B1 79        	BYTE 177,121
+ 470+ 90A1 C9 7D        	BYTE 201,125
+ 471+ 90A3 CB 8A        	BYTE 203,138
+ 472+ 90A5
+# file closed: message.asm
+1061  90A5
+1062  90A5              ;;;;;;;;;;;;;;;;;;;;;;;;
+1063  90A5              ; fonts
+1064  90A5              ;;;;;;;;;;;;;;;;;;;;;;;;
+1065  90A5 00 00 00...  	ALIGN 128
+1066  9100              fonts:
+1067  9100 3C             DEFB %00111100 	; char30
+1068  9101 7E             DEFB %01111110
+1069  9102 66             DEFB %01100110
+1070  9103 66             DEFB %01100110
+1071  9104 66             DEFB %01100110
+1072  9105 66             DEFB %01100110
+1073  9106 66             DEFB %01100110
+1074  9107 7E             DEFB %01111110
+1075  9108 3C             DEFB %00111100
+1076  9109
+1077  9109 18             DEFB %00011000 	; char31
+1078  910A 18             DEFB %00011000
+1079  910B 38             DEFB %00111000
+1080  910C 18             DEFB %00011000
+1081  910D 18             DEFB %00011000
+1082  910E 18             DEFB %00011000
+1083  910F 18             DEFB %00011000
+1084  9110 18             DEFB %00011000
+1085  9111 18             DEFB %00011000
+1086  9112
+1087  9112 1C             DEFB %00011100 	; char32
+1088  9113 3E             DEFB %00111110
+1089  9114 36             DEFB %00110110
+1090  9115 06             DEFB %00000110
+1091  9116 0C             DEFB %00001100
+1092  9117 18             DEFB %00011000
+1093  9118 30             DEFB %00110000
+1094  9119 3E             DEFB %00111110
+1095  911A 3E             DEFB %00111110
+1096  911B
+1097  911B 3C             DEFB %00111100 	; char33
+1098  911C 7E             DEFB %01111110
+1099  911D 66             DEFB %01100110
+1100  911E 06             DEFB %00000110
+1101  911F 18             DEFB %00011000
+1102  9120 06             DEFB %00000110
+1103  9121 66             DEFB %01100110
+1104  9122 7E             DEFB %01111110
+1105  9123 3C             DEFB %00111100
+1106  9124
+1107  9124 0C             DEFB %00001100 	; char34
+1108  9125 0C             DEFB %00001100
+1109  9126 18             DEFB %00011000
+1110  9127 30             DEFB %00110000
+1111  9128 60             DEFB %01100000
+1112  9129 6C             DEFB %01101100
+1113  912A 7E             DEFB %01111110
+1114  912B 0C             DEFB %00001100
+1115  912C 0C             DEFB %00001100
+1116  912D
+1117  912D 3C             DEFB %00111100 	; char35
+1118  912E 3C             DEFB %00111100
+1119  912F 20             DEFB %00100000
+1120  9130 3C             DEFB %00111100
+1121  9131 06             DEFB %00000110
+1122  9132 06             DEFB %00000110
+1123  9133 66             DEFB %01100110
+1124  9134 7E             DEFB %01111110
+1125  9135 3C             DEFB %00111100
+1126  9136
+1127  9136 1C             DEFB %00011100 	; char36
+1128  9137 3C             DEFB %00111100
+1129  9138 60             DEFB %01100000
+1130  9139 7C             DEFB %01111100
+1131  913A 7E             DEFB %01111110
+1132  913B 66             DEFB %01100110
+1133  913C 66             DEFB %01100110
+1134  913D 7E             DEFB %01111110
+1135  913E 3C             DEFB %00111100
+1136  913F
+1137  913F 7E             DEFB %01111110 	; char37
+1138  9140 06             DEFB %00000110
+1139  9141 0C             DEFB %00001100
+1140  9142 18             DEFB %00011000
+1141  9143 18             DEFB %00011000
+1142  9144 18             DEFB %00011000
+1143  9145 18             DEFB %00011000
+1144  9146 18             DEFB %00011000
+1145  9147 18             DEFB %00011000
+1146  9148
+1147  9148 3C             DEFB %00111100 	; char38
+1148  9149 7E             DEFB %01111110
+1149  914A 66             DEFB %01100110
+1150  914B 66             DEFB %01100110
+1151  914C 3C             DEFB %00111100
+1152  914D 66             DEFB %01100110
+1153  914E 66             DEFB %01100110
+1154  914F 7E             DEFB %01111110
+1155  9150 7E             DEFB %01111110
+1156  9151
+1157  9151 3C             DEFB %00111100 	; char39
+1158  9152 7E             DEFB %01111110
+1159  9153 66             DEFB %01100110
+1160  9154 66             DEFB %01100110
+1161  9155 7E             DEFB %01111110
+1162  9156 3E             DEFB %00111110
+1163  9157 06             DEFB %00000110
+1164  9158 7E             DEFB %01111110
+1165  9159 78             DEFB %01111000
+1166  915A
+1167  915A
+1168  915A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1169  915A              ; hardcoded rotation
+1170  915A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1171  915A              rotat_x:
+1172  915A 00 01 02 03  	BYTE 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+1172  915E 04 05 06 07
+1172  9162 08 09 0A 0B
+1172  9166 0C 0D 0E 0F
+1172  916A 10 11 12 13
+1172  916E 14 15 16 17
+1172  9172 18 19 1A 1B
+1172  9176 1C 1D 1E 1F
+1173  917A 02 03 04 05  	BYTE 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 16, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 25, 26, 27, 28, 29
+1173  917E 06 07 07 08
+1173  9182 09 0A 0B 0C
+1173  9186 0D 0E 0F 10
+1173  918A 10 10 11 12
+1173  918E 13 14 15 16
+1173  9192 17 18 19 19
+1173  9196 1A 1B 1C 1D
+1174  919A 04 05 05 06  	BYTE 4, 5, 5, 6, 7, 8, 9, 9, 10, 11, 12, 13, 13, 14, 15, 16, 16, 16, 17, 18, 19, 19, 20, 21, 22, 23, 23, 24, 25, 26, 27, 27
+1174  919E 07 08 09 09
+1174  91A2 0A 0B 0C 0D
+1174  91A6 0D 0E 0F 10
+1174  91AA 10 10 11 12
+1174  91AE 13 13 14 15
+1174  91B2 16 17 17 18
+1174  91B6 19 1A 1B 1B
+1175  91BA 05 06 07 07  	BYTE 5, 6, 7, 7, 8, 9, 10, 10, 11, 12, 12, 13, 14, 14, 15, 16, 16, 16, 17, 18, 18, 19, 20, 20, 21, 22, 22, 23, 24, 25, 25, 26
+1175  91BE 08 09 0A 0A
+1175  91C2 0B 0C 0C 0D
+1175  91C6 0E 0E 0F 10
+1175  91CA 10 10 11 12
+1175  91CE 12 13 14 14
+1175  91D2 15 16 16 17
+1175  91D6 18 19 19 1A
+1176  91DA 07 08 08 09  	BYTE 7, 8, 8, 9, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 19, 20, 20, 21, 21, 22, 23, 23, 24, 24
+1176  91DE 09 0A 0B 0B
+1176  91E2 0C 0C 0D 0E
+1176  91E6 0E 0F 0F 10
+1176  91EA 10 10 11 11
+1176  91EE 12 12 13 14
+1176  91F2 14 15 15 16
+1176  91F6 17 17 18 18
+1177  91FA 09 09 0A 0A  	BYTE 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 16, 16, 16, 17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23
+1177  91FE 0B 0B 0C 0C
+1177  9202 0D 0D 0E 0E
+1177  9206 0F 0F 10 10
+1177  920A 10 10 10 11
+1177  920E 11 12 12 13
+1177  9212 13 14 14 15
+1177  9216 15 16 16 17
+1178  921A 0A 0B 0B 0B  	BYTE 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 15, 16, 16, 16, 16, 16, 17, 17, 17, 18, 18, 19, 19, 19, 20, 20, 21, 21, 21
+1178  921E 0C 0C 0D 0D
+1178  9222 0D 0E 0E 0F
+1178  9226 0F 0F 10 10
+1178  922A 10 10 10 11
+1178  922E 11 11 12 12
+1178  9232 13 13 13 14
+1178  9236 14 15 15 15
+1179  923A 0C 0C 0C 0D  	BYTE 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 18, 18, 18, 18, 19, 19, 19, 20, 20
+1179  923E 0D 0D 0E 0E
+1179  9242 0E 0E 0F 0F
+1179  9246 0F 10 10 10
+1179  924A 10 10 10 10
+1179  924E 11 11 11 12
+1179  9252 12 12 12 13
+1179  9256 13 13 14 14
+1180  925A 0D 0E 0E 0E  	BYTE 13, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18
+1180  925E 0E 0E 0F 0F
+1180  9262 0F 0F 0F 10
+1180  9266 10 10 10 10
+1180  926A 10 10 10 10
+1180  926E 10 10 11 11
+1180  9272 11 11 11 12
+1180  9276 12 12 12 12
+1181  927A 0F 0F 0F 0F  	BYTE 15, 15, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 17, 17
+1181  927E 0F 0F 10 10
+1181  9282 10 10 10 10
+1181  9286 10 10 10 10
+1181  928A 10 10 10 10
+1181  928E 10 10 10 10
+1181  9292 10 10 10 11
+1181  9296 11 11 11 11
+1182  929A 10 10 10 10  	BYTE 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16
+1182  929E 10 10 10 10
+1182  92A2 10 10 10 10
+1182  92A6 10 10 10 10
+1182  92AA 10 10 10 10
+1182  92AE 10 10 10 10
+1182  92B2 10 10 10 10
+1182  92B6 10 10 10 10
+1183  92BA 11 11 11 11  	BYTE 17, 17, 17, 17, 17, 17, 17, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15, 15, 15, 15
+1183  92BE 11 11 11 10
+1183  92C2 10 10 10 10
+1183  92C6 10 10 10 10
+1183  92CA 10 10 10 10
+1183  92CE 10 10 10 10
+1183  92D2 10 10 0F 0F
+1183  92D6 0F 0F 0F 0F
+1184  92DA 13 13 12 12  	BYTE 19, 19, 18, 18, 18, 18, 18, 17, 17, 17, 17, 17, 16, 16, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15, 15, 15, 14, 14, 14, 14, 14, 13
+1184  92DE 12 12 12 11
+1184  92E2 11 11 11 11
+1184  92E6 10 10 10 10
+1184  92EA 10 10 10 10
+1184  92EE 10 0F 0F 0F
+1184  92F2 0F 0F 0E 0E
+1184  92F6 0E 0E 0E 0D
+1185  92FA 14 14 14 13  	BYTE 20, 20, 20, 19, 19, 19, 19, 18, 18, 18, 17, 17, 17, 16, 16, 16, 16, 16, 16, 16, 15, 15, 15, 14, 14, 14, 13, 13, 13, 13, 12, 12
+1185  92FE 13 13 13 12
+1185  9302 12 12 11 11
+1185  9306 11 10 10 10
+1185  930A 10 10 10 10
+1185  930E 0F 0F 0F 0E
+1185  9312 0E 0E 0D 0D
+1185  9316 0D 0D 0C 0C
+1186  931A 16 16 15 15  	BYTE 22, 22, 21, 21, 20, 20, 20, 19, 19, 18, 18, 18, 17, 17, 16, 16, 16, 16, 16, 15, 15, 14, 14, 14, 13, 13, 12, 12, 12, 11, 11, 10
+1186  931E 14 14 14 13
+1186  9322 13 12 12 12
+1186  9326 11 11 10 10
+1186  932A 10 10 10 0F
+1186  932E 0F 0E 0E 0E
+1186  9332 0D 0D 0C 0C
+1186  9336 0C 0B 0B 0A
+1187  933A 18 17 17 16  	BYTE 24, 23, 23, 22, 22, 21, 21, 20, 20, 19, 19, 18, 18, 17, 17, 16, 16, 16, 15, 15, 14, 14, 13, 13, 12, 12, 11, 11, 10, 10, 9, 9
+1187  933E 16 15 15 14
+1187  9342 14 13 13 12
+1187  9346 12 11 11 10
+1187  934A 10 10 0F 0F
+1187  934E 0E 0E 0D 0D
+1187  9352 0C 0C 0B 0B
+1187  9356 0A 0A 09 09
+1188  935A 19 19 18 17  	BYTE 25, 25, 24, 23, 23, 22, 22, 21, 20, 20, 19, 19, 18, 17, 17, 16, 16, 16, 15, 15, 14, 13, 13, 12, 12, 11, 10, 10, 9, 9, 8, 7
+1188  935E 17 16 16 15
+1188  9362 14 14 13 13
+1188  9366 12 11 11 10
+1188  936A 10 10 0F 0F
+1188  936E 0E 0D 0D 0C
+1188  9372 0C 0B 0A 0A
+1188  9376 09 09 08 07
+1189  937A 1B 1A 19 19  	BYTE 27, 26, 25, 25, 24, 23, 23, 22, 21, 20, 20, 19, 18, 18, 17, 16, 16, 16, 15, 14, 14, 13, 12, 12, 11, 10, 9, 9, 8, 7, 7, 6
+1189  937E 18 17 17 16
+1189  9382 15 14 14 13
+1189  9386 12 12 11 10
+1189  938A 10 10 0F 0E
+1189  938E 0E 0D 0C 0C
+1189  9392 0B 0A 09 09
+1189  9396 08 07 07 06
+1190  939A 1C 1C 1B 1A  	BYTE 28, 28, 27, 26, 25, 24, 24, 23, 22, 21, 20, 20, 19, 18, 17, 16, 16, 16, 15, 14, 13, 12, 12, 11, 10, 9, 8, 8, 7, 6, 5, 4
+1190  939E 19 18 18 17
+1190  93A2 16 15 14 14
+1190  93A6 13 12 11 10
+1190  93AA 10 10 0F 0E
+1190  93AE 0D 0C 0C 0B
+1190  93B2 0A 09 08 08
+1190  93B6 07 06 05 04
+1191  93BA 1E 1D 1C 1B  	BYTE 30, 29, 28, 27, 26, 25, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 16, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 7, 6, 5, 4, 3
+1191  93BE 1A 19 19 18
+1191  93C2 17 16 15 14
+1191  93C6 13 12 11 10
+1191  93CA 10 10 0F 0E
+1191  93CE 0D 0C 0B 0A
+1191  93D2 09 08 07 07
+1191  93D6 06 05 04 03
+1192  93DA
+1193  93DA              rotat_y:
+1194  93DA 00 00 20 00  	WORD 0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0xe0, 0x100, 0x120, 0x140, 0x160, 0x180, 0x1a0, 0x1c0, 0x1e0, 0x200, 0x220, 0x240, 0x260, 0x280, 0x2a0, 0x2c0, 0x2e0
+1194  93DE 40 00 60 00
+1194  93E2 80 00 A0 00
+1194  93E6 C0 00 E0 00
+1194  93EA 00 01 20 01
+1194  93EE 40 01 60 01
+1194  93F2 80 01 A0 01
+1194  93F6 C0 01 E0 01
+1194  93FA 00 02 20 02
+1194  93FE 40 02 60 02
+1194  9402 80 02 A0 02
+1194  9406 C0 02 E0 02
+1195  940A
+1196  940A
+1197  940A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1198  940A              ; initialized variables
+1199  940A              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1200  940A 00           nested: BYTE 0
+1201  940B 00           clock_counter_5: BYTE 0
+1202  940C 01           clock_changed: BYTE 1
+1203  940D 00           clock_changed_draw: BYTE 0
+1204  940E 06           bcd_3: BYTE 6
+1205  940F 00           bcd_2: BYTE 0
+1206  9410 00           bcd_1: BYTE 0
+1207  9411 00           bcd_0: BYTE 0
+1208  9412 C0 20        draw_color_lines_running_point: WORD 0x20c0
+1209  9414 01           paging_available: BYTE 1
+1210  9415 F1 0F        draw_color_lines_vector: WORD 0x0ff1
+1211  9417 04           color: BYTE 4 ; green
+1212  9418 00 40        scrapper_pos: WORD 0x4000
+1213  941A 20 03        scrapper_timer: WORD 800
+1214  941C 00           clock_disabled: BYTE 0
+1215  941D 9B           zero_timer: BYTE 155
+1216  941E 00 00        polyline_pointer: WORD 0 ; should be empty svg
+1217  9420              code_end:
+1218  9420
+1219  9420              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1220  9420              ; variables
+1221  9420              ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+1222  9420              screen_0_array: ; [hl] [enable]
+1223  9420 00 00 00    > BYTE 0, 0, 0
+1223  9423 00 00 00    > BYTE 0, 0, 0
+1223  9426 00 00 00    > BYTE 0, 0, 0
+1223  9429 00 00 00    > BYTE 0, 0, 0
+1223  942C 00 00 00    > BYTE 0, 0, 0
+1223  942F 00 00 00    > BYTE 0, 0, 0
+1223  9432 00 00 00    > BYTE 0, 0, 0
+1223  9435 00 00 00    > BYTE 0, 0, 0
+1223  9438 00 00 00    > BYTE 0, 0, 0
+1223  943B 00 00 00    > BYTE 0, 0, 0
+1223  943E 00 00 00    > BYTE 0, 0, 0
+1223  9441 00 00 00    > BYTE 0, 0, 0
+1223  9444 00 00 00    > BYTE 0, 0, 0
+1223  9447 00 00 00    > BYTE 0, 0, 0
+1223  944A 00 00 00    > BYTE 0, 0, 0
+1223  944D 00 00 00    > BYTE 0, 0, 0
+1223  9450 00 00 00    > BYTE 0, 0, 0
+1223  9453 00 00 00    > BYTE 0, 0, 0
+1223  9456 00 00 00    > BYTE 0, 0, 0
+1223  9459 00 00 00    > BYTE 0, 0, 0
+1223  945C 00 00 00    > BYTE 0, 0, 0
+1223  945F 00 00 00    > BYTE 0, 0, 0
+1223  9462 00 00 00    > BYTE 0, 0, 0
+1223  9465 00 00 00    > BYTE 0, 0, 0
+1223  9468 00 00 00    > BYTE 0, 0, 0
+1223  946B 00 00 00    > BYTE 0, 0, 0
+1223  946E 00 00 00    > BYTE 0, 0, 0
+1223  9471 00 00 00    > BYTE 0, 0, 0
+1223  9474 00 00 00    > BYTE 0, 0, 0
+1223  9477 00 00 00    > BYTE 0, 0, 0
+1223  947A 00 00 00    > BYTE 0, 0, 0
+1223  947D 00 00 00    > BYTE 0, 0, 0
+1223  9480 00 00 00    > BYTE 0, 0, 0
+1223  9483 00 00 00    > BYTE 0, 0, 0
+1223  9486 00 00 00    > BYTE 0, 0, 0
+1223  9489 00 00 00    > BYTE 0, 0, 0
+1223  948C 00 00 00    > BYTE 0, 0, 0
+1223  948F 00 00 00    > BYTE 0, 0, 0
+1223  9492 00 00 00    > BYTE 0, 0, 0
+1223  9495 00 00 00    > BYTE 0, 0, 0
+1223  9498 00 00 00    > BYTE 0, 0, 0
+1223  949B 00 00 00    > BYTE 0, 0, 0
+1223  949E 00 00 00    > BYTE 0, 0, 0
+1223  94A1 00 00 00    > BYTE 0, 0, 0
+1223  94A4 00 00 00    > BYTE 0, 0, 0
+1223  94A7 00 00 00    > BYTE 0, 0, 0
+1223  94AA 00 00 00    > BYTE 0, 0, 0
+1223  94AD 00 00 00    > BYTE 0, 0, 0
+1223  94B0 00 00 00    > BYTE 0, 0, 0
+1223  94B3 00 00 00    > BYTE 0, 0, 0
+1223  94B6 00 00 00    > BYTE 0, 0, 0
+1223  94B9 00 00 00    > BYTE 0, 0, 0
+1223  94BC 00 00 00    > BYTE 0, 0, 0
+1223  94BF 00 00 00    > BYTE 0, 0, 0
+1223  94C2 00 00 00    > BYTE 0, 0, 0
+1223  94C5 00 00 00    > BYTE 0, 0, 0
+1223  94C8 00 00 00    > BYTE 0, 0, 0
+1223  94CB 00 00 00    > BYTE 0, 0, 0
+1223  94CE 00 00 00    > BYTE 0, 0, 0
+1223  94D1 00 00 00    > BYTE 0, 0, 0
+1223  94D4 00 00 00    > BYTE 0, 0, 0
+1223  94D7 00 00 00    > BYTE 0, 0, 0
+1223  94DA 00 00 00    > BYTE 0, 0, 0
+1223  94DD 00 00 00    > BYTE 0, 0, 0
+1223  94E0 00 00 00    > BYTE 0, 0, 0
+1223  94E3 00 00 00    > BYTE 0, 0, 0
+1223  94E6 00 00 00    > BYTE 0, 0, 0
+1223  94E9 00 00 00    > BYTE 0, 0, 0
+1223  94EC 00 00 00    > BYTE 0, 0, 0
+1223  94EF 00 00 00    > BYTE 0, 0, 0
+1223  94F2 00 00 00    > BYTE 0, 0, 0
+1223  94F5 00 00 00    > BYTE 0, 0, 0
+1223  94F8 00 00 00    > BYTE 0, 0, 0
+1223  94FB 00 00 00    > BYTE 0, 0, 0
+1223  94FE 00 00 00    > BYTE 0, 0, 0
+1223  9501 00 00 00    > BYTE 0, 0, 0
+1223  9504 00 00 00    > BYTE 0, 0, 0
+1223  9507 00 00 00    > BYTE 0, 0, 0
+1223  950A 00 00 00    > BYTE 0, 0, 0
+1223  950D 00 00 00    > BYTE 0, 0, 0
+1223  9510 00 00 00    > BYTE 0, 0, 0
+1223  9513 00 00 00    > BYTE 0, 0, 0
+1223  9516 00 00 00    > BYTE 0, 0, 0
+1223  9519 00 00 00    > BYTE 0, 0, 0
+1223  951C 00 00 00    > BYTE 0, 0, 0
+1223  951F 00 00 00    > BYTE 0, 0, 0
+1223  9522 00 00 00    > BYTE 0, 0, 0
+1223  9525 00 00 00    > BYTE 0, 0, 0
+1223  9528 00 00 00    > BYTE 0, 0, 0
+1223  952B 00 00 00    > BYTE 0, 0, 0
+1223  952E 00 00 00    > BYTE 0, 0, 0
+1223  9531 00 00 00    > BYTE 0, 0, 0
+1223  9534 00 00 00    > BYTE 0, 0, 0
+1223  9537 00 00 00    > BYTE 0, 0, 0
+1223  953A 00 00 00    > BYTE 0, 0, 0
+1223  953D 00 00 00    > BYTE 0, 0, 0
+1223  9540 00 00 00    > BYTE 0, 0, 0
+1223  9543 00 00 00    > BYTE 0, 0, 0
+1223  9546 00 00 00    > BYTE 0, 0, 0
+1223  9549 00 00 00    > BYTE 0, 0, 0
+1223  954C 00 00 00    > BYTE 0, 0, 0
+1223  954F 00 00 00    > BYTE 0, 0, 0
+1223  9552 00 00 00    > BYTE 0, 0, 0
+1223  9555 00 00 00    > BYTE 0, 0, 0
+1223  9558 00 00 00    > BYTE 0, 0, 0
+1223  955B 00 00 00    > BYTE 0, 0, 0
+1223  955E 00 00 00    > BYTE 0, 0, 0
+1223  9561 00 00 00    > BYTE 0, 0, 0
+1223  9564 00 00 00    > BYTE 0, 0, 0
+1223  9567 00 00 00    > BYTE 0, 0, 0
+1223  956A 00 00 00    > BYTE 0, 0, 0
+1223  956D 00 00 00    > BYTE 0, 0, 0
+1223  9570 00 00 00    > BYTE 0, 0, 0
+1223  9573 00 00 00    > BYTE 0, 0, 0
+1223  9576 00 00 00    > BYTE 0, 0, 0
+1223  9579 00 00 00    > BYTE 0, 0, 0
+1223  957C 00 00 00    > BYTE 0, 0, 0
+1223  957F 00 00 00    > BYTE 0, 0, 0
+1223  9582 00 00 00    > BYTE 0, 0, 0
+1223  9585 00 00 00    > BYTE 0, 0, 0
+1223  9588 00 00 00    > BYTE 0, 0, 0
+1223  958B 00 00 00    > BYTE 0, 0, 0
+1223  958E 00 00 00    > BYTE 0, 0, 0
+1223  9591 00 00 00    > BYTE 0, 0, 0
+1223  9594 00 00 00    > BYTE 0, 0, 0
+1223  9597 00 00 00    > BYTE 0, 0, 0
+1223  959A 00 00 00    > BYTE 0, 0, 0
+1223  959D 00 00 00    > BYTE 0, 0, 0
+1223  95A0 00 00 00    > BYTE 0, 0, 0
+1223  95A3 00 00 00    > BYTE 0, 0, 0
+1223  95A6 00 00 00    > BYTE 0, 0, 0
+1223  95A9 00 00 00    > BYTE 0, 0, 0
+1223  95AC 00 00 00    > BYTE 0, 0, 0
+1223  95AF 00 00 00    > BYTE 0, 0, 0
+1223  95B2 00 00 00    > BYTE 0, 0, 0
+1223  95B5 00 00 00    > BYTE 0, 0, 0
+1223  95B8 00 00 00    > BYTE 0, 0, 0
+1223  95BB 00 00 00    > BYTE 0, 0, 0
+1223  95BE 00 00 00    > BYTE 0, 0, 0
+1223  95C1 00 00 00    > BYTE 0, 0, 0
+1223  95C4 00 00 00    > BYTE 0, 0, 0
+1223  95C7 00 00 00    > BYTE 0, 0, 0
+1223  95CA 00 00 00    > BYTE 0, 0, 0
+1223  95CD 00 00 00    > BYTE 0, 0, 0
+1223  95D0 00 00 00    > BYTE 0, 0, 0
+1223  95D3 00 00 00    > BYTE 0, 0, 0
+1223  95D6 00 00 00    > BYTE 0, 0, 0
+1223  95D9 00 00 00    > BYTE 0, 0, 0
+1223  95DC 00 00 00    > BYTE 0, 0, 0
+1223  95DF 00 00 00    > BYTE 0, 0, 0
+1223  95E2 00 00 00    > BYTE 0, 0, 0
+1223  95E5 00 00 00    > BYTE 0, 0, 0
+1223  95E8 00 00 00    > BYTE 0, 0, 0
+1223  95EB 00 00 00    > BYTE 0, 0, 0
+1223  95EE 00 00 00    > BYTE 0, 0, 0
+1223  95F1 00 00 00    > BYTE 0, 0, 0
+1223  95F4 00 00 00    > BYTE 0, 0, 0
+1223  95F7 00 00 00    > BYTE 0, 0, 0
+1223  95FA 00 00 00    > BYTE 0, 0, 0
+1223  95FD 00 00 00    > BYTE 0, 0, 0
+1223  9600 00 00 00    > BYTE 0, 0, 0
+1223  9603 00 00 00    > BYTE 0, 0, 0
+1223  9606 00 00 00    > BYTE 0, 0, 0
+1223  9609 00 00 00    > BYTE 0, 0, 0
+1223  960C 00 00 00    > BYTE 0, 0, 0
+1223  960F 00 00 00    > BYTE 0, 0, 0
+1223  9612 00 00 00    > BYTE 0, 0, 0
+1223  9615 00 00 00    > BYTE 0, 0, 0
+1223  9618 00 00 00    > BYTE 0, 0, 0
+1223  961B 00 00 00    > BYTE 0, 0, 0
+1223  961E 00 00 00    > BYTE 0, 0, 0
+1223  9621 00 00 00    > BYTE 0, 0, 0
+1223  9624 00 00 00    > BYTE 0, 0, 0
+1223  9627 00 00 00    > BYTE 0, 0, 0
+1223  962A 00 00 00    > BYTE 0, 0, 0
+1223  962D 00 00 00    > BYTE 0, 0, 0
+1223  9630 00 00 00    > BYTE 0, 0, 0
+1223  9633 00 00 00    > BYTE 0, 0, 0
+1223  9636 00 00 00    > BYTE 0, 0, 0
+1223  9639 00 00 00    > BYTE 0, 0, 0
+1223  963C 00 00 00    > BYTE 0, 0, 0
+1223  963F 00 00 00    > BYTE 0, 0, 0
+1223  9642 00 00 00    > BYTE 0, 0, 0
+1223  9645 00 00 00    > BYTE 0, 0, 0
+1223  9648 00 00 00    > BYTE 0, 0, 0
+1223  964B 00 00 00    > BYTE 0, 0, 0
+1223  964E 00 00 00    > BYTE 0, 0, 0
+1223  9651 00 00 00    > BYTE 0, 0, 0
+1223  9654 00 00 00    > BYTE 0, 0, 0
+1223  9657 00 00 00    > BYTE 0, 0, 0
+1223  965A 00 00 00    > BYTE 0, 0, 0
+1223  965D 00 00 00    > BYTE 0, 0, 0
+1223  9660 00 00 00    > BYTE 0, 0, 0
+1223  9663 00 00 00    > BYTE 0, 0, 0
+1223  9666 00 00 00    > BYTE 0, 0, 0
+1223  9669 00 00 00    > BYTE 0, 0, 0
+1223  966C 00 00 00    > BYTE 0, 0, 0
+1223  966F 00 00 00    > BYTE 0, 0, 0
+1223  9672 00 00 00    > BYTE 0, 0, 0
+1223  9675 00 00 00    > BYTE 0, 0, 0
+1223  9678 00 00 00    > BYTE 0, 0, 0
+1223  967B 00 00 00    > BYTE 0, 0, 0
+1223  967E 00 00 00    > BYTE 0, 0, 0
+1223  9681 00 00 00    > BYTE 0, 0, 0
+1223  9684 00 00 00    > BYTE 0, 0, 0
+1223  9687 00 00 00    > BYTE 0, 0, 0
+1223  968A 00 00 00    > BYTE 0, 0, 0
+1223  968D 00 00 00    > BYTE 0, 0, 0
+1223  9690 00 00 00    > BYTE 0, 0, 0
+1223  9693 00 00 00    > BYTE 0, 0, 0
+1223  9696 00 00 00    > BYTE 0, 0, 0
+1223  9699 00 00 00    > BYTE 0, 0, 0
+1223  969C 00 00 00    > BYTE 0, 0, 0
+1223  969F 00 00 00    > BYTE 0, 0, 0
+1223  96A2 00 00 00    > BYTE 0, 0, 0
+1223  96A5 00 00 00    > BYTE 0, 0, 0
+1224  96A8              screen_1_array:
+1225  96A8 00 00 00    > BYTE 0, 0, 0
+1225  96AB 00 00 00    > BYTE 0, 0, 0
+1225  96AE 00 00 00    > BYTE 0, 0, 0
+1225  96B1 00 00 00    > BYTE 0, 0, 0
+1225  96B4 00 00 00    > BYTE 0, 0, 0
+1225  96B7 00 00 00    > BYTE 0, 0, 0
+1225  96BA 00 00 00    > BYTE 0, 0, 0
+1225  96BD 00 00 00    > BYTE 0, 0, 0
+1225  96C0 00 00 00    > BYTE 0, 0, 0
+1225  96C3 00 00 00    > BYTE 0, 0, 0
+1225  96C6 00 00 00    > BYTE 0, 0, 0
+1225  96C9 00 00 00    > BYTE 0, 0, 0
+1225  96CC 00 00 00    > BYTE 0, 0, 0
+1225  96CF 00 00 00    > BYTE 0, 0, 0
+1225  96D2 00 00 00    > BYTE 0, 0, 0
+1225  96D5 00 00 00    > BYTE 0, 0, 0
+1225  96D8 00 00 00    > BYTE 0, 0, 0
+1225  96DB 00 00 00    > BYTE 0, 0, 0
+1225  96DE 00 00 00    > BYTE 0, 0, 0
+1225  96E1 00 00 00    > BYTE 0, 0, 0
+1225  96E4 00 00 00    > BYTE 0, 0, 0
+1225  96E7 00 00 00    > BYTE 0, 0, 0
+1225  96EA 00 00 00    > BYTE 0, 0, 0
+1225  96ED 00 00 00    > BYTE 0, 0, 0
+1225  96F0 00 00 00    > BYTE 0, 0, 0
+1225  96F3 00 00 00    > BYTE 0, 0, 0
+1225  96F6 00 00 00    > BYTE 0, 0, 0
+1225  96F9 00 00 00    > BYTE 0, 0, 0
+1225  96FC 00 00 00    > BYTE 0, 0, 0
+1225  96FF 00 00 00    > BYTE 0, 0, 0
+1225  9702 00 00 00    > BYTE 0, 0, 0
+1225  9705 00 00 00    > BYTE 0, 0, 0
+1225  9708 00 00 00    > BYTE 0, 0, 0
+1225  970B 00 00 00    > BYTE 0, 0, 0
+1225  970E 00 00 00    > BYTE 0, 0, 0
+1225  9711 00 00 00    > BYTE 0, 0, 0
+1225  9714 00 00 00    > BYTE 0, 0, 0
+1225  9717 00 00 00    > BYTE 0, 0, 0
+1225  971A 00 00 00    > BYTE 0, 0, 0
+1225  971D 00 00 00    > BYTE 0, 0, 0
+1225  9720 00 00 00    > BYTE 0, 0, 0
+1225  9723 00 00 00    > BYTE 0, 0, 0
+1225  9726 00 00 00    > BYTE 0, 0, 0
+1225  9729 00 00 00    > BYTE 0, 0, 0
+1225  972C 00 00 00    > BYTE 0, 0, 0
+1225  972F 00 00 00    > BYTE 0, 0, 0
+1225  9732 00 00 00    > BYTE 0, 0, 0
+1225  9735 00 00 00    > BYTE 0, 0, 0
+1225  9738 00 00 00    > BYTE 0, 0, 0
+1225  973B 00 00 00    > BYTE 0, 0, 0
+1225  973E 00 00 00    > BYTE 0, 0, 0
+1225  9741 00 00 00    > BYTE 0, 0, 0
+1225  9744 00 00 00    > BYTE 0, 0, 0
+1225  9747 00 00 00    > BYTE 0, 0, 0
+1225  974A 00 00 00    > BYTE 0, 0, 0
+1225  974D 00 00 00    > BYTE 0, 0, 0
+1225  9750 00 00 00    > BYTE 0, 0, 0
+1225  9753 00 00 00    > BYTE 0, 0, 0
+1225  9756 00 00 00    > BYTE 0, 0, 0
+1225  9759 00 00 00    > BYTE 0, 0, 0
+1225  975C 00 00 00    > BYTE 0, 0, 0
+1225  975F 00 00 00    > BYTE 0, 0, 0
+1225  9762 00 00 00    > BYTE 0, 0, 0
+1225  9765 00 00 00    > BYTE 0, 0, 0
+1225  9768 00 00 00    > BYTE 0, 0, 0
+1225  976B 00 00 00    > BYTE 0, 0, 0
+1225  976E 00 00 00    > BYTE 0, 0, 0
+1225  9771 00 00 00    > BYTE 0, 0, 0
+1225  9774 00 00 00    > BYTE 0, 0, 0
+1225  9777 00 00 00    > BYTE 0, 0, 0
+1225  977A 00 00 00    > BYTE 0, 0, 0
+1225  977D 00 00 00    > BYTE 0, 0, 0
+1225  9780 00 00 00    > BYTE 0, 0, 0
+1225  9783 00 00 00    > BYTE 0, 0, 0
+1225  9786 00 00 00    > BYTE 0, 0, 0
+1225  9789 00 00 00    > BYTE 0, 0, 0
+1225  978C 00 00 00    > BYTE 0, 0, 0
+1225  978F 00 00 00    > BYTE 0, 0, 0
+1225  9792 00 00 00    > BYTE 0, 0, 0
+1225  9795 00 00 00    > BYTE 0, 0, 0
+1225  9798 00 00 00    > BYTE 0, 0, 0
+1225  979B 00 00 00    > BYTE 0, 0, 0
+1225  979E 00 00 00    > BYTE 0, 0, 0
+1225  97A1 00 00 00    > BYTE 0, 0, 0
+1225  97A4 00 00 00    > BYTE 0, 0, 0
+1225  97A7 00 00 00    > BYTE 0, 0, 0
+1225  97AA 00 00 00    > BYTE 0, 0, 0
+1225  97AD 00 00 00    > BYTE 0, 0, 0
+1225  97B0 00 00 00    > BYTE 0, 0, 0
+1225  97B3 00 00 00    > BYTE 0, 0, 0
+1225  97B6 00 00 00    > BYTE 0, 0, 0
+1225  97B9 00 00 00    > BYTE 0, 0, 0
+1225  97BC 00 00 00    > BYTE 0, 0, 0
+1225  97BF 00 00 00    > BYTE 0, 0, 0
+1225  97C2 00 00 00    > BYTE 0, 0, 0
+1225  97C5 00 00 00    > BYTE 0, 0, 0
+1225  97C8 00 00 00    > BYTE 0, 0, 0
+1225  97CB 00 00 00    > BYTE 0, 0, 0
+1225  97CE 00 00 00    > BYTE 0, 0, 0
+1225  97D1 00 00 00    > BYTE 0, 0, 0
+1225  97D4 00 00 00    > BYTE 0, 0, 0
+1225  97D7 00 00 00    > BYTE 0, 0, 0
+1225  97DA 00 00 00    > BYTE 0, 0, 0
+1225  97DD 00 00 00    > BYTE 0, 0, 0
+1225  97E0 00 00 00    > BYTE 0, 0, 0
+1225  97E3 00 00 00    > BYTE 0, 0, 0
+1225  97E6 00 00 00    > BYTE 0, 0, 0
+1225  97E9 00 00 00    > BYTE 0, 0, 0
+1225  97EC 00 00 00    > BYTE 0, 0, 0
+1225  97EF 00 00 00    > BYTE 0, 0, 0
+1225  97F2 00 00 00    > BYTE 0, 0, 0
+1225  97F5 00 00 00    > BYTE 0, 0, 0
+1225  97F8 00 00 00    > BYTE 0, 0, 0
+1225  97FB 00 00 00    > BYTE 0, 0, 0
+1225  97FE 00 00 00    > BYTE 0, 0, 0
+1225  9801 00 00 00    > BYTE 0, 0, 0
+1225  9804 00 00 00    > BYTE 0, 0, 0
+1225  9807 00 00 00    > BYTE 0, 0, 0
+1225  980A 00 00 00    > BYTE 0, 0, 0
+1225  980D 00 00 00    > BYTE 0, 0, 0
+1225  9810 00 00 00    > BYTE 0, 0, 0
+1225  9813 00 00 00    > BYTE 0, 0, 0
+1225  9816 00 00 00    > BYTE 0, 0, 0
+1225  9819 00 00 00    > BYTE 0, 0, 0
+1225  981C 00 00 00    > BYTE 0, 0, 0
+1225  981F 00 00 00    > BYTE 0, 0, 0
+1225  9822 00 00 00    > BYTE 0, 0, 0
+1225  9825 00 00 00    > BYTE 0, 0, 0
+1225  9828 00 00 00    > BYTE 0, 0, 0
+1225  982B 00 00 00    > BYTE 0, 0, 0
+1225  982E 00 00 00    > BYTE 0, 0, 0
+1225  9831 00 00 00    > BYTE 0, 0, 0
+1225  9834 00 00 00    > BYTE 0, 0, 0
+1225  9837 00 00 00    > BYTE 0, 0, 0
+1225  983A 00 00 00    > BYTE 0, 0, 0
+1225  983D 00 00 00    > BYTE 0, 0, 0
+1225  9840 00 00 00    > BYTE 0, 0, 0
+1225  9843 00 00 00    > BYTE 0, 0, 0
+1225  9846 00 00 00    > BYTE 0, 0, 0
+1225  9849 00 00 00    > BYTE 0, 0, 0
+1225  984C 00 00 00    > BYTE 0, 0, 0
+1225  984F 00 00 00    > BYTE 0, 0, 0
+1225  9852 00 00 00    > BYTE 0, 0, 0
+1225  9855 00 00 00    > BYTE 0, 0, 0
+1225  9858 00 00 00    > BYTE 0, 0, 0
+1225  985B 00 00 00    > BYTE 0, 0, 0
+1225  985E 00 00 00    > BYTE 0, 0, 0
+1225  9861 00 00 00    > BYTE 0, 0, 0
+1225  9864 00 00 00    > BYTE 0, 0, 0
+1225  9867 00 00 00    > BYTE 0, 0, 0
+1225  986A 00 00 00    > BYTE 0, 0, 0
+1225  986D 00 00 00    > BYTE 0, 0, 0
+1225  9870 00 00 00    > BYTE 0, 0, 0
+1225  9873 00 00 00    > BYTE 0, 0, 0
+1225  9876 00 00 00    > BYTE 0, 0, 0
+1225  9879 00 00 00    > BYTE 0, 0, 0
+1225  987C 00 00 00    > BYTE 0, 0, 0
+1225  987F 00 00 00    > BYTE 0, 0, 0
+1225  9882 00 00 00    > BYTE 0, 0, 0
+1225  9885 00 00 00    > BYTE 0, 0, 0
+1225  9888 00 00 00    > BYTE 0, 0, 0
+1225  988B 00 00 00    > BYTE 0, 0, 0
+1225  988E 00 00 00    > BYTE 0, 0, 0
+1225  9891 00 00 00    > BYTE 0, 0, 0
+1225  9894 00 00 00    > BYTE 0, 0, 0
+1225  9897 00 00 00    > BYTE 0, 0, 0
+1225  989A 00 00 00    > BYTE 0, 0, 0
+1225  989D 00 00 00    > BYTE 0, 0, 0
+1225  98A0 00 00 00    > BYTE 0, 0, 0
+1225  98A3 00 00 00    > BYTE 0, 0, 0
+1225  98A6 00 00 00    > BYTE 0, 0, 0
+1225  98A9 00 00 00    > BYTE 0, 0, 0
+1225  98AC 00 00 00    > BYTE 0, 0, 0
+1225  98AF 00 00 00    > BYTE 0, 0, 0
+1225  98B2 00 00 00    > BYTE 0, 0, 0
+1225  98B5 00 00 00    > BYTE 0, 0, 0
+1225  98B8 00 00 00    > BYTE 0, 0, 0
+1225  98BB 00 00 00    > BYTE 0, 0, 0
+1225  98BE 00 00 00    > BYTE 0, 0, 0
+1225  98C1 00 00 00    > BYTE 0, 0, 0
+1225  98C4 00 00 00    > BYTE 0, 0, 0
+1225  98C7 00 00 00    > BYTE 0, 0, 0
+1225  98CA 00 00 00    > BYTE 0, 0, 0
+1225  98CD 00 00 00    > BYTE 0, 0, 0
+1225  98D0 00 00 00    > BYTE 0, 0, 0
+1225  98D3 00 00 00    > BYTE 0, 0, 0
+1225  98D6 00 00 00    > BYTE 0, 0, 0
+1225  98D9 00 00 00    > BYTE 0, 0, 0
+1225  98DC 00 00 00    > BYTE 0, 0, 0
+1225  98DF 00 00 00    > BYTE 0, 0, 0
+1225  98E2 00 00 00    > BYTE 0, 0, 0
+1225  98E5 00 00 00    > BYTE 0, 0, 0
+1225  98E8 00 00 00    > BYTE 0, 0, 0
+1225  98EB 00 00 00    > BYTE 0, 0, 0
+1225  98EE 00 00 00    > BYTE 0, 0, 0
+1225  98F1 00 00 00    > BYTE 0, 0, 0
+1225  98F4 00 00 00    > BYTE 0, 0, 0
+1225  98F7 00 00 00    > BYTE 0, 0, 0
+1225  98FA 00 00 00    > BYTE 0, 0, 0
+1225  98FD 00 00 00    > BYTE 0, 0, 0
+1225  9900 00 00 00    > BYTE 0, 0, 0
+1225  9903 00 00 00    > BYTE 0, 0, 0
+1225  9906 00 00 00    > BYTE 0, 0, 0
+1225  9909 00 00 00    > BYTE 0, 0, 0
+1225  990C 00 00 00    > BYTE 0, 0, 0
+1225  990F 00 00 00    > BYTE 0, 0, 0
+1225  9912 00 00 00    > BYTE 0, 0, 0
+1225  9915 00 00 00    > BYTE 0, 0, 0
+1225  9918 00 00 00    > BYTE 0, 0, 0
+1225  991B 00 00 00    > BYTE 0, 0, 0
+1225  991E 00 00 00    > BYTE 0, 0, 0
+1225  9921 00 00 00    > BYTE 0, 0, 0
+1225  9924 00 00 00    > BYTE 0, 0, 0
+1225  9927 00 00 00    > BYTE 0, 0, 0
+1225  992A 00 00 00    > BYTE 0, 0, 0
+1225  992D 00 00 00    > BYTE 0, 0, 0
+1226  9930              screen_0_background:
+1227  9930 00          > BYTE 0
+1227  9931 00          > BYTE 0
+1227  9932 00          > BYTE 0
+1227  9933 00          > BYTE 0
+1227  9934 00          > BYTE 0
+1227  9935 00          > BYTE 0
+1227  9936 00          > BYTE 0
+1227  9937 00          > BYTE 0
+1227  9938 00          > BYTE 0
+1227  9939 00          > BYTE 0
+1227  993A 00          > BYTE 0
+1227  993B 00          > BYTE 0
+1227  993C 00          > BYTE 0
+1227  993D 00          > BYTE 0
+1227  993E 00          > BYTE 0
+1227  993F 00          > BYTE 0
+1227  9940 00          > BYTE 0
+1227  9941 00          > BYTE 0
+1227  9942 00          > BYTE 0
+1227  9943 00          > BYTE 0
+1227  9944 00          > BYTE 0
+1227  9945 00          > BYTE 0
+1227  9946 00          > BYTE 0
+1227  9947 00          > BYTE 0
+1227  9948 00          > BYTE 0
+1227  9949 00          > BYTE 0
+1227  994A 00          > BYTE 0
+1227  994B 00          > BYTE 0
+1227  994C 00          > BYTE 0
+1227  994D 00          > BYTE 0
+1227  994E 00          > BYTE 0
+1227  994F 00          > BYTE 0
+1227  9950 00          > BYTE 0
+1227  9951 00          > BYTE 0
+1227  9952 00          > BYTE 0
+1227  9953 00          > BYTE 0
+1227  9954 00          > BYTE 0
+1227  9955 00          > BYTE 0
+1227  9956 00          > BYTE 0
+1227  9957 00          > BYTE 0
+1227  9958 00          > BYTE 0
+1227  9959 00          > BYTE 0
+1227  995A 00          > BYTE 0
+1227  995B 00          > BYTE 0
+1227  995C 00          > BYTE 0
+1227  995D 00          > BYTE 0
+1227  995E 00          > BYTE 0
+1227  995F 00          > BYTE 0
+1227  9960 00          > BYTE 0
+1227  9961 00          > BYTE 0
+1227  9962 00          > BYTE 0
+1227  9963 00          > BYTE 0
+1227  9964 00          > BYTE 0
+1227  9965 00          > BYTE 0
+1227  9966 00          > BYTE 0
+1227  9967 00          > BYTE 0
+1227  9968 00          > BYTE 0
+1227  9969 00          > BYTE 0
+1227  996A 00          > BYTE 0
+1227  996B 00          > BYTE 0
+1227  996C 00          > BYTE 0
+1227  996D 00          > BYTE 0
+1227  996E 00          > BYTE 0
+1227  996F 00          > BYTE 0
+1227  9970 00          > BYTE 0
+1227  9971 00          > BYTE 0
+1227  9972 00          > BYTE 0
+1227  9973 00          > BYTE 0
+1227  9974 00          > BYTE 0
+1227  9975 00          > BYTE 0
+1227  9976 00          > BYTE 0
+1227  9977 00          > BYTE 0
+1227  9978 00          > BYTE 0
+1227  9979 00          > BYTE 0
+1227  997A 00          > BYTE 0
+1227  997B 00          > BYTE 0
+1227  997C 00          > BYTE 0
+1227  997D 00          > BYTE 0
+1227  997E 00          > BYTE 0
+1227  997F 00          > BYTE 0
+1227  9980 00          > BYTE 0
+1227  9981 00          > BYTE 0
+1227  9982 00          > BYTE 0
+1227  9983 00          > BYTE 0
+1227  9984 00          > BYTE 0
+1227  9985 00          > BYTE 0
+1227  9986 00          > BYTE 0
+1227  9987 00          > BYTE 0
+1227  9988 00          > BYTE 0
+1227  9989 00          > BYTE 0
+1227  998A 00          > BYTE 0
+1227  998B 00          > BYTE 0
+1227  998C 00          > BYTE 0
+1227  998D 00          > BYTE 0
+1227  998E 00          > BYTE 0
+1227  998F 00          > BYTE 0
+1227  9990 00          > BYTE 0
+1227  9991 00          > BYTE 0
+1227  9992 00          > BYTE 0
+1227  9993 00          > BYTE 0
+1227  9994 00          > BYTE 0
+1227  9995 00          > BYTE 0
+1227  9996 00          > BYTE 0
+1227  9997 00          > BYTE 0
+1227  9998 00          > BYTE 0
+1227  9999 00          > BYTE 0
+1227  999A 00          > BYTE 0
+1227  999B 00          > BYTE 0
+1227  999C 00          > BYTE 0
+1227  999D 00          > BYTE 0
+1227  999E 00          > BYTE 0
+1227  999F 00          > BYTE 0
+1227  99A0 00          > BYTE 0
+1227  99A1 00          > BYTE 0
+1227  99A2 00          > BYTE 0
+1227  99A3 00          > BYTE 0
+1227  99A4 00          > BYTE 0
+1227  99A5 00          > BYTE 0
+1227  99A6 00          > BYTE 0
+1227  99A7 00          > BYTE 0
+1227  99A8 00          > BYTE 0
+1227  99A9 00          > BYTE 0
+1227  99AA 00          > BYTE 0
+1227  99AB 00          > BYTE 0
+1227  99AC 00          > BYTE 0
+1227  99AD 00          > BYTE 0
+1227  99AE 00          > BYTE 0
+1227  99AF 00          > BYTE 0
+1227  99B0 00          > BYTE 0
+1227  99B1 00          > BYTE 0
+1227  99B2 00          > BYTE 0
+1227  99B3 00          > BYTE 0
+1227  99B4 00          > BYTE 0
+1227  99B5 00          > BYTE 0
+1227  99B6 00          > BYTE 0
+1227  99B7 00          > BYTE 0
+1227  99B8 00          > BYTE 0
+1227  99B9 00          > BYTE 0
+1227  99BA 00          > BYTE 0
+1227  99BB 00          > BYTE 0
+1227  99BC 00          > BYTE 0
+1227  99BD 00          > BYTE 0
+1227  99BE 00          > BYTE 0
+1227  99BF 00          > BYTE 0
+1227  99C0 00          > BYTE 0
+1227  99C1 00          > BYTE 0
+1227  99C2 00          > BYTE 0
+1227  99C3 00          > BYTE 0
+1227  99C4 00          > BYTE 0
+1227  99C5 00          > BYTE 0
+1227  99C6 00          > BYTE 0
+1227  99C7 00          > BYTE 0
+1227  99C8 00          > BYTE 0
+1227  99C9 00          > BYTE 0
+1227  99CA 00          > BYTE 0
+1227  99CB 00          > BYTE 0
+1227  99CC 00          > BYTE 0
+1227  99CD 00          > BYTE 0
+1227  99CE 00          > BYTE 0
+1227  99CF 00          > BYTE 0
+1227  99D0 00          > BYTE 0
+1227  99D1 00          > BYTE 0
+1227  99D2 00          > BYTE 0
+1227  99D3 00          > BYTE 0
+1227  99D4 00          > BYTE 0
+1227  99D5 00          > BYTE 0
+1227  99D6 00          > BYTE 0
+1227  99D7 00          > BYTE 0
+1227  99D8 00          > BYTE 0
+1227  99D9 00          > BYTE 0
+1227  99DA 00          > BYTE 0
+1227  99DB 00          > BYTE 0
+1227  99DC 00          > BYTE 0
+1227  99DD 00          > BYTE 0
+1227  99DE 00          > BYTE 0
+1227  99DF 00          > BYTE 0
+1227  99E0 00          > BYTE 0
+1227  99E1 00          > BYTE 0
+1227  99E2 00          > BYTE 0
+1227  99E3 00          > BYTE 0
+1227  99E4 00          > BYTE 0
+1227  99E5 00          > BYTE 0
+1227  99E6 00          > BYTE 0
+1227  99E7 00          > BYTE 0
+1227  99E8 00          > BYTE 0
+1227  99E9 00          > BYTE 0
+1227  99EA 00          > BYTE 0
+1227  99EB 00          > BYTE 0
+1227  99EC 00          > BYTE 0
+1227  99ED 00          > BYTE 0
+1227  99EE 00          > BYTE 0
+1227  99EF 00          > BYTE 0
+1227  99F0 00          > BYTE 0
+1227  99F1 00          > BYTE 0
+1227  99F2 00          > BYTE 0
+1227  99F3 00          > BYTE 0
+1227  99F4 00          > BYTE 0
+1227  99F5 00          > BYTE 0
+1227  99F6 00          > BYTE 0
+1227  99F7 00          > BYTE 0
+1227  99F8 00          > BYTE 0
+1227  99F9 00          > BYTE 0
+1227  99FA 00          > BYTE 0
+1227  99FB 00          > BYTE 0
+1227  99FC 00          > BYTE 0
+1227  99FD 00          > BYTE 0
+1227  99FE 00          > BYTE 0
+1227  99FF 00          > BYTE 0
+1227  9A00 00          > BYTE 0
+1227  9A01 00          > BYTE 0
+1227  9A02 00          > BYTE 0
+1227  9A03 00          > BYTE 0
+1227  9A04 00          > BYTE 0
+1227  9A05 00          > BYTE 0
+1227  9A06 00          > BYTE 0
+1227  9A07 00          > BYTE 0
+1228  9A08              screen_1_background:
+1229  9A08 00          > BYTE 0
+1229  9A09 00          > BYTE 0
+1229  9A0A 00          > BYTE 0
+1229  9A0B 00          > BYTE 0
+1229  9A0C 00          > BYTE 0
+1229  9A0D 00          > BYTE 0
+1229  9A0E 00          > BYTE 0
+1229  9A0F 00          > BYTE 0
+1229  9A10 00          > BYTE 0
+1229  9A11 00          > BYTE 0
+1229  9A12 00          > BYTE 0
+1229  9A13 00          > BYTE 0
+1229  9A14 00          > BYTE 0
+1229  9A15 00          > BYTE 0
+1229  9A16 00          > BYTE 0
+1229  9A17 00          > BYTE 0
+1229  9A18 00          > BYTE 0
+1229  9A19 00          > BYTE 0
+1229  9A1A 00          > BYTE 0
+1229  9A1B 00          > BYTE 0
+1229  9A1C 00          > BYTE 0
+1229  9A1D 00          > BYTE 0
+1229  9A1E 00          > BYTE 0
+1229  9A1F 00          > BYTE 0
+1229  9A20 00          > BYTE 0
+1229  9A21 00          > BYTE 0
+1229  9A22 00          > BYTE 0
+1229  9A23 00          > BYTE 0
+1229  9A24 00          > BYTE 0
+1229  9A25 00          > BYTE 0
+1229  9A26 00          > BYTE 0
+1229  9A27 00          > BYTE 0
+1229  9A28 00          > BYTE 0
+1229  9A29 00          > BYTE 0
+1229  9A2A 00          > BYTE 0
+1229  9A2B 00          > BYTE 0
+1229  9A2C 00          > BYTE 0
+1229  9A2D 00          > BYTE 0
+1229  9A2E 00          > BYTE 0
+1229  9A2F 00          > BYTE 0
+1229  9A30 00          > BYTE 0
+1229  9A31 00          > BYTE 0
+1229  9A32 00          > BYTE 0
+1229  9A33 00          > BYTE 0
+1229  9A34 00          > BYTE 0
+1229  9A35 00          > BYTE 0
+1229  9A36 00          > BYTE 0
+1229  9A37 00          > BYTE 0
+1229  9A38 00          > BYTE 0
+1229  9A39 00          > BYTE 0
+1229  9A3A 00          > BYTE 0
+1229  9A3B 00          > BYTE 0
+1229  9A3C 00          > BYTE 0
+1229  9A3D 00          > BYTE 0
+1229  9A3E 00          > BYTE 0
+1229  9A3F 00          > BYTE 0
+1229  9A40 00          > BYTE 0
+1229  9A41 00          > BYTE 0
+1229  9A42 00          > BYTE 0
+1229  9A43 00          > BYTE 0
+1229  9A44 00          > BYTE 0
+1229  9A45 00          > BYTE 0
+1229  9A46 00          > BYTE 0
+1229  9A47 00          > BYTE 0
+1229  9A48 00          > BYTE 0
+1229  9A49 00          > BYTE 0
+1229  9A4A 00          > BYTE 0
+1229  9A4B 00          > BYTE 0
+1229  9A4C 00          > BYTE 0
+1229  9A4D 00          > BYTE 0
+1229  9A4E 00          > BYTE 0
+1229  9A4F 00          > BYTE 0
+1229  9A50 00          > BYTE 0
+1229  9A51 00          > BYTE 0
+1229  9A52 00          > BYTE 0
+1229  9A53 00          > BYTE 0
+1229  9A54 00          > BYTE 0
+1229  9A55 00          > BYTE 0
+1229  9A56 00          > BYTE 0
+1229  9A57 00          > BYTE 0
+1229  9A58 00          > BYTE 0
+1229  9A59 00          > BYTE 0
+1229  9A5A 00          > BYTE 0
+1229  9A5B 00          > BYTE 0
+1229  9A5C 00          > BYTE 0
+1229  9A5D 00          > BYTE 0
+1229  9A5E 00          > BYTE 0
+1229  9A5F 00          > BYTE 0
+1229  9A60 00          > BYTE 0
+1229  9A61 00          > BYTE 0
+1229  9A62 00          > BYTE 0
+1229  9A63 00          > BYTE 0
+1229  9A64 00          > BYTE 0
+1229  9A65 00          > BYTE 0
+1229  9A66 00          > BYTE 0
+1229  9A67 00          > BYTE 0
+1229  9A68 00          > BYTE 0
+1229  9A69 00          > BYTE 0
+1229  9A6A 00          > BYTE 0
+1229  9A6B 00          > BYTE 0
+1229  9A6C 00          > BYTE 0
+1229  9A6D 00          > BYTE 0
+1229  9A6E 00          > BYTE 0
+1229  9A6F 00          > BYTE 0
+1229  9A70 00          > BYTE 0
+1229  9A71 00          > BYTE 0
+1229  9A72 00          > BYTE 0
+1229  9A73 00          > BYTE 0
+1229  9A74 00          > BYTE 0
+1229  9A75 00          > BYTE 0
+1229  9A76 00          > BYTE 0
+1229  9A77 00          > BYTE 0
+1229  9A78 00          > BYTE 0
+1229  9A79 00          > BYTE 0
+1229  9A7A 00          > BYTE 0
+1229  9A7B 00          > BYTE 0
+1229  9A7C 00          > BYTE 0
+1229  9A7D 00          > BYTE 0
+1229  9A7E 00          > BYTE 0
+1229  9A7F 00          > BYTE 0
+1229  9A80 00          > BYTE 0
+1229  9A81 00          > BYTE 0
+1229  9A82 00          > BYTE 0
+1229  9A83 00          > BYTE 0
+1229  9A84 00          > BYTE 0
+1229  9A85 00          > BYTE 0
+1229  9A86 00          > BYTE 0
+1229  9A87 00          > BYTE 0
+1229  9A88 00          > BYTE 0
+1229  9A89 00          > BYTE 0
+1229  9A8A 00          > BYTE 0
+1229  9A8B 00          > BYTE 0
+1229  9A8C 00          > BYTE 0
+1229  9A8D 00          > BYTE 0
+1229  9A8E 00          > BYTE 0
+1229  9A8F 00          > BYTE 0
+1229  9A90 00          > BYTE 0
+1229  9A91 00          > BYTE 0
+1229  9A92 00          > BYTE 0
+1229  9A93 00          > BYTE 0
+1229  9A94 00          > BYTE 0
+1229  9A95 00          > BYTE 0
+1229  9A96 00          > BYTE 0
+1229  9A97 00          > BYTE 0
+1229  9A98 00          > BYTE 0
+1229  9A99 00          > BYTE 0
+1229  9A9A 00          > BYTE 0
+1229  9A9B 00          > BYTE 0
+1229  9A9C 00          > BYTE 0
+1229  9A9D 00          > BYTE 0
+1229  9A9E 00          > BYTE 0
+1229  9A9F 00          > BYTE 0
+1229  9AA0 00          > BYTE 0
+1229  9AA1 00          > BYTE 0
+1229  9AA2 00          > BYTE 0
+1229  9AA3 00          > BYTE 0
+1229  9AA4 00          > BYTE 0
+1229  9AA5 00          > BYTE 0
+1229  9AA6 00          > BYTE 0
+1229  9AA7 00          > BYTE 0
+1229  9AA8 00          > BYTE 0
+1229  9AA9 00          > BYTE 0
+1229  9AAA 00          > BYTE 0
+1229  9AAB 00          > BYTE 0
+1229  9AAC 00          > BYTE 0
+1229  9AAD 00          > BYTE 0
+1229  9AAE 00          > BYTE 0
+1229  9AAF 00          > BYTE 0
+1229  9AB0 00          > BYTE 0
+1229  9AB1 00          > BYTE 0
+1229  9AB2 00          > BYTE 0
+1229  9AB3 00          > BYTE 0
+1229  9AB4 00          > BYTE 0
+1229  9AB5 00          > BYTE 0
+1229  9AB6 00          > BYTE 0
+1229  9AB7 00          > BYTE 0
+1229  9AB8 00          > BYTE 0
+1229  9AB9 00          > BYTE 0
+1229  9ABA 00          > BYTE 0
+1229  9ABB 00          > BYTE 0
+1229  9ABC 00          > BYTE 0
+1229  9ABD 00          > BYTE 0
+1229  9ABE 00          > BYTE 0
+1229  9ABF 00          > BYTE 0
+1229  9AC0 00          > BYTE 0
+1229  9AC1 00          > BYTE 0
+1229  9AC2 00          > BYTE 0
+1229  9AC3 00          > BYTE 0
+1229  9AC4 00          > BYTE 0
+1229  9AC5 00          > BYTE 0
+1229  9AC6 00          > BYTE 0
+1229  9AC7 00          > BYTE 0
+1229  9AC8 00          > BYTE 0
+1229  9AC9 00          > BYTE 0
+1229  9ACA 00          > BYTE 0
+1229  9ACB 00          > BYTE 0
+1229  9ACC 00          > BYTE 0
+1229  9ACD 00          > BYTE 0
+1229  9ACE 00          > BYTE 0
+1229  9ACF 00          > BYTE 0
+1229  9AD0 00          > BYTE 0
+1229  9AD1 00          > BYTE 0
+1229  9AD2 00          > BYTE 0
+1229  9AD3 00          > BYTE 0
+1229  9AD4 00          > BYTE 0
+1229  9AD5 00          > BYTE 0
+1229  9AD6 00          > BYTE 0
+1229  9AD7 00          > BYTE 0
+1229  9AD8 00          > BYTE 0
+1229  9AD9 00          > BYTE 0
+1229  9ADA 00          > BYTE 0
+1229  9ADB 00          > BYTE 0
+1229  9ADC 00          > BYTE 0
+1229  9ADD 00          > BYTE 0
+1229  9ADE 00          > BYTE 0
+1229  9ADF 00          > BYTE 0
+1230  9AE0              screen_background_end:
+1231  9AE0              clock_points_array:
+1232  9AE0 00 00       > BYTE 0, 0 ; [de] d = vertical, e = horisontal
+1232  9AE2 00 00       > BYTE 0, 0
+1232  9AE4 00 00       > BYTE 0, 0
+1232  9AE6 00 00       > BYTE 0, 0
+1232  9AE8 00 00       > BYTE 0, 0
+1232  9AEA 00 00       > BYTE 0, 0
+1232  9AEC 00 00       > BYTE 0, 0
+1232  9AEE 00 00       > BYTE 0, 0
+1232  9AF0 00 00       > BYTE 0, 0
+1232  9AF2 00 00       > BYTE 0, 0
+1232  9AF4 00 00       > BYTE 0, 0
+1232  9AF6 00 00       > BYTE 0, 0
+1232  9AF8 00 00       > BYTE 0, 0
+1232  9AFA 00 00       > BYTE 0, 0
+1232  9AFC 00 00       > BYTE 0, 0
+1232  9AFE 00 00       > BYTE 0, 0
+1232  9B00 00 00       > BYTE 0, 0
+1232  9B02 00 00       > BYTE 0, 0
+1232  9B04 00 00       > BYTE 0, 0
+1232  9B06 00 00       > BYTE 0, 0
+1232  9B08 00 00       > BYTE 0, 0
+1232  9B0A 00 00       > BYTE 0, 0
+1232  9B0C 00 00       > BYTE 0, 0
+1232  9B0E 00 00       > BYTE 0, 0
+1232  9B10 00 00       > BYTE 0, 0
+1232  9B12 00 00       > BYTE 0, 0
+1232  9B14 00 00       > BYTE 0, 0
+1232  9B16 00 00       > BYTE 0, 0
+1232  9B18 00 00       > BYTE 0, 0
+1232  9B1A 00 00       > BYTE 0, 0
+1232  9B1C 00 00       > BYTE 0, 0
+1232  9B1E 00 00       > BYTE 0, 0
+1232  9B20 00 00       > BYTE 0, 0
+1232  9B22 00 00       > BYTE 0, 0
+1232  9B24 00 00       > BYTE 0, 0
+1232  9B26 00 00       > BYTE 0, 0
+1232  9B28 00 00       > BYTE 0, 0
+1232  9B2A 00 00       > BYTE 0, 0
+1232  9B2C 00 00       > BYTE 0, 0
+1232  9B2E 00 00       > BYTE 0, 0
+1232  9B30 00 00       > BYTE 0, 0
+1232  9B32 00 00       > BYTE 0, 0
+1232  9B34 00 00       > BYTE 0, 0
+1232  9B36 00 00       > BYTE 0, 0
+1232  9B38 00 00       > BYTE 0, 0
+1232  9B3A 00 00       > BYTE 0, 0
+1232  9B3C 00 00       > BYTE 0, 0
+1232  9B3E 00 00       > BYTE 0, 0
+1232  9B40 00 00       > BYTE 0, 0
+1232  9B42 00 00       > BYTE 0, 0
+1232  9B44 00 00       > BYTE 0, 0
+1232  9B46 00 00       > BYTE 0, 0
+1232  9B48 00 00       > BYTE 0, 0
+1232  9B4A 00 00       > BYTE 0, 0
+1232  9B4C 00 00       > BYTE 0, 0
+1232  9B4E 00 00       > BYTE 0, 0
+1232  9B50 00 00       > BYTE 0, 0
+1232  9B52 00 00       > BYTE 0, 0
+1232  9B54 00 00       > BYTE 0, 0
+1232  9B56 00 00       > BYTE 0, 0
+1232  9B58 00 00       > BYTE 0, 0
+1232  9B5A 00 00       > BYTE 0, 0
+1232  9B5C 00 00       > BYTE 0, 0
+1232  9B5E 00 00       > BYTE 0, 0
+1232  9B60 00 00       > BYTE 0, 0
+1232  9B62 00 00       > BYTE 0, 0
+1232  9B64 00 00       > BYTE 0, 0
+1232  9B66 00 00       > BYTE 0, 0
+1232  9B68 00 00       > BYTE 0, 0
+1232  9B6A 00 00       > BYTE 0, 0
+1232  9B6C 00 00       > BYTE 0, 0
+1232  9B6E 00 00       > BYTE 0, 0
+1232  9B70 00 00       > BYTE 0, 0
+1232  9B72 00 00       > BYTE 0, 0
+1232  9B74 00 00       > BYTE 0, 0
+1232  9B76 00 00       > BYTE 0, 0
+1232  9B78 00 00       > BYTE 0, 0
+1232  9B7A 00 00       > BYTE 0, 0
+1232  9B7C 00 00       > BYTE 0, 0
+1232  9B7E 00 00       > BYTE 0, 0
+1232  9B80 00 00       > BYTE 0, 0
+1232  9B82 00 00       > BYTE 0, 0
+1232  9B84 00 00       > BYTE 0, 0
+1232  9B86 00 00       > BYTE 0, 0
+1232  9B88 00 00       > BYTE 0, 0
+1232  9B8A 00 00       > BYTE 0, 0
+1232  9B8C 00 00       > BYTE 0, 0
+1232  9B8E 00 00       > BYTE 0, 0
+1232  9B90 00 00       > BYTE 0, 0
+1232  9B92 00 00       > BYTE 0, 0
+1232  9B94 00 00       > BYTE 0, 0
+1232  9B96 00 00       > BYTE 0, 0
+1232  9B98 00 00       > BYTE 0, 0
+1232  9B9A 00 00       > BYTE 0, 0
+1232  9B9C 00 00       > BYTE 0, 0
+1232  9B9E 00 00       > BYTE 0, 0
+1232  9BA0 00 00       > BYTE 0, 0
+1232  9BA2 00 00       > BYTE 0, 0
+1232  9BA4 00 00       > BYTE 0, 0
+1232  9BA6 00 00       > BYTE 0, 0
+1232  9BA8 00 00       > BYTE 0, 0
+1232  9BAA 00 00       > BYTE 0, 0
+1232  9BAC 00 00       > BYTE 0, 0
+1232  9BAE 00 00       > BYTE 0, 0
+1232  9BB0 00 00       > BYTE 0, 0
+1232  9BB2 00 00       > BYTE 0, 0
+1232  9BB4 00 00       > BYTE 0, 0
+1232  9BB6 00 00       > BYTE 0, 0
+1232  9BB8 00 00       > BYTE 0, 0
+1232  9BBA 00 00       > BYTE 0, 0
+1232  9BBC 00 00       > BYTE 0, 0
+1232  9BBE 00 00       > BYTE 0, 0
+1232  9BC0 00 00       > BYTE 0, 0
+1232  9BC2 00 00       > BYTE 0, 0
+1232  9BC4 00 00       > BYTE 0, 0
+1232  9BC6 00 00       > BYTE 0, 0
+1232  9BC8 00 00       > BYTE 0, 0
+1232  9BCA 00 00       > BYTE 0, 0
+1232  9BCC 00 00       > BYTE 0, 0
+1232  9BCE 00 00       > BYTE 0, 0
+1232  9BD0 00 00       > BYTE 0, 0
+1232  9BD2 00 00       > BYTE 0, 0
+1232  9BD4 00 00       > BYTE 0, 0
+1232  9BD6 00 00       > BYTE 0, 0
+1232  9BD8 00 00       > BYTE 0, 0
+1232  9BDA 00 00       > BYTE 0, 0
+1232  9BDC 00 00       > BYTE 0, 0
+1232  9BDE 00 00       > BYTE 0, 0
+1232  9BE0 00 00       > BYTE 0, 0
+1232  9BE2 00 00       > BYTE 0, 0
+1232  9BE4 00 00       > BYTE 0, 0
+1232  9BE6 00 00       > BYTE 0, 0
+1232  9BE8 00 00       > BYTE 0, 0
+1232  9BEA 00 00       > BYTE 0, 0
+1232  9BEC 00 00       > BYTE 0, 0
+1232  9BEE 00 00       > BYTE 0, 0
+1232  9BF0 00 00       > BYTE 0, 0
+1232  9BF2 00 00       > BYTE 0, 0
+1232  9BF4 00 00       > BYTE 0, 0
+1232  9BF6 00 00       > BYTE 0, 0
+1232  9BF8 00 00       > BYTE 0, 0
+1232  9BFA 00 00       > BYTE 0, 0
+1232  9BFC 00 00       > BYTE 0, 0
+1232  9BFE 00 00       > BYTE 0, 0
+1232  9C00 00 00       > BYTE 0, 0
+1232  9C02 00 00       > BYTE 0, 0
+1232  9C04 00 00       > BYTE 0, 0
+1232  9C06 00 00       > BYTE 0, 0
+1232  9C08 00 00       > BYTE 0, 0
+1232  9C0A 00 00       > BYTE 0, 0
+1232  9C0C 00 00       > BYTE 0, 0
+1232  9C0E 00 00       > BYTE 0, 0
+1232  9C10 00 00       > BYTE 0, 0
+1232  9C12 00 00       > BYTE 0, 0
+1232  9C14 00 00       > BYTE 0, 0
+1232  9C16 00 00       > BYTE 0, 0
+1232  9C18 00 00       > BYTE 0, 0
+1232  9C1A 00 00       > BYTE 0, 0
+1232  9C1C 00 00       > BYTE 0, 0
+1232  9C1E 00 00       > BYTE 0, 0
+1232  9C20 00 00       > BYTE 0, 0
+1232  9C22 00 00       > BYTE 0, 0
+1232  9C24 00 00       > BYTE 0, 0
+1232  9C26 00 00       > BYTE 0, 0
+1232  9C28 00 00       > BYTE 0, 0
+1232  9C2A 00 00       > BYTE 0, 0
+1232  9C2C 00 00       > BYTE 0, 0
+1232  9C2E 00 00       > BYTE 0, 0
+1232  9C30 00 00       > BYTE 0, 0
+1232  9C32 00 00       > BYTE 0, 0
+1232  9C34 00 00       > BYTE 0, 0
+1232  9C36 00 00       > BYTE 0, 0
+1232  9C38 00 00       > BYTE 0, 0
+1232  9C3A 00 00       > BYTE 0, 0
+1232  9C3C 00 00       > BYTE 0, 0
+1232  9C3E 00 00       > BYTE 0, 0
+1232  9C40 00 00       > BYTE 0, 0
+1232  9C42 00 00       > BYTE 0, 0
+1232  9C44 00 00       > BYTE 0, 0
+1232  9C46 00 00       > BYTE 0, 0
+1232  9C48 00 00       > BYTE 0, 0
+1232  9C4A 00 00       > BYTE 0, 0
+1232  9C4C 00 00       > BYTE 0, 0
+1232  9C4E 00 00       > BYTE 0, 0
+1232  9C50 00 00       > BYTE 0, 0
+1232  9C52 00 00       > BYTE 0, 0
+1232  9C54 00 00       > BYTE 0, 0
+1232  9C56 00 00       > BYTE 0, 0
+1232  9C58 00 00       > BYTE 0, 0
+1232  9C5A 00 00       > BYTE 0, 0
+1232  9C5C 00 00       > BYTE 0, 0
+1232  9C5E 00 00       > BYTE 0, 0
+1232  9C60 00 00       > BYTE 0, 0
+1232  9C62 00 00       > BYTE 0, 0
+1232  9C64 00 00       > BYTE 0, 0
+1232  9C66 00 00       > BYTE 0, 0
+1232  9C68 00 00       > BYTE 0, 0
+1232  9C6A 00 00       > BYTE 0, 0
+1232  9C6C 00 00       > BYTE 0, 0
+1232  9C6E 00 00       > BYTE 0, 0
+1232  9C70 00 00       > BYTE 0, 0
+1232  9C72 00 00       > BYTE 0, 0
+1232  9C74 00 00       > BYTE 0, 0
+1232  9C76 00 00       > BYTE 0, 0
+1232  9C78 00 00       > BYTE 0, 0
+1232  9C7A 00 00       > BYTE 0, 0
+1232  9C7C 00 00       > BYTE 0, 0
+1232  9C7E 00 00       > BYTE 0, 0
+1232  9C80 00 00       > BYTE 0, 0
+1232  9C82 00 00       > BYTE 0, 0
+1232  9C84 00 00       > BYTE 0, 0
+1232  9C86 00 00       > BYTE 0, 0
+1232  9C88 00 00       > BYTE 0, 0
+1232  9C8A 00 00       > BYTE 0, 0
+1232  9C8C 00 00       > BYTE 0, 0
+1232  9C8E 00 00       > BYTE 0, 0
+1233  9C90              	; if d == 0 then disabled
+1234  9C90              clock_points_array_end:
+1235  9C90 00           screen_selector: BYTE 0
+1236  9C91 00           point_beyond_screen_0: BYTE 0
+1237  9C92 00           point_beyond_screen_1: BYTE 0
+1238  9C93 00           screen_0_drawing_ok: BYTE 0
+1239  9C94 00           screen_1_drawing_ok: BYTE 0
+1240  9C95 00           player_page: BYTE 0
+1241  9C96 00           flip_mask: BYTE 0
+1242  9C97 00 00        rotat_x_selected: WORD 0
+1243  9C99 00 00        rotat_y_selected: WORD 0
+1244  9C9B 00           rotat_x_angle: BYTE 0
+1245  9C9C 00           rotat_y_angle: BYTE 0
+1246  9C9D 00           rotat_x_increment: BYTE 0
+1247  9C9E              color_queue:
+1248  9C9E 00 00 00    > BYTE 0, 0, 0
+1248  9CA1 00 00 00    > BYTE 0, 0, 0
+1248  9CA4 00 00 00    > BYTE 0, 0, 0
+1248  9CA7 00 00 00    > BYTE 0, 0, 0
+1248  9CAA 00 00 00    > BYTE 0, 0, 0
+1248  9CAD 00 00 00    > BYTE 0, 0, 0
+1248  9CB0 00 00 00    > BYTE 0, 0, 0
+1248  9CB3 00 00 00    > BYTE 0, 0, 0
+1248  9CB6 00 00 00    > BYTE 0, 0, 0
+1248  9CB9 00 00 00    > BYTE 0, 0, 0
+1248  9CBC 00 00 00    > BYTE 0, 0, 0
+1248  9CBF 00 00 00    > BYTE 0, 0, 0
+1248  9CC2 00 00 00    > BYTE 0, 0, 0
+1248  9CC5 00 00 00    > BYTE 0, 0, 0
+1248  9CC8 00 00 00    > BYTE 0, 0, 0
+1248  9CCB 00 00 00    > BYTE 0, 0, 0
+1248  9CCE 00 00 00    > BYTE 0, 0, 0
+1248  9CD1 00 00 00    > BYTE 0, 0, 0
+1248  9CD4 00 00 00    > BYTE 0, 0, 0
+1248  9CD7 00 00 00    > BYTE 0, 0, 0
+1248  9CDA 00 00 00    > BYTE 0, 0, 0
+1248  9CDD 00 00 00    > BYTE 0, 0, 0
+1248  9CE0 00 00 00    > BYTE 0, 0, 0
+1248  9CE3 00 00 00    > BYTE 0, 0, 0
+1248  9CE6 00 00 00    > BYTE 0, 0, 0
+1248  9CE9 00 00 00    > BYTE 0, 0, 0
+1248  9CEC 00 00 00    > BYTE 0, 0, 0
+1248  9CEF 00 00 00    > BYTE 0, 0, 0
+1248  9CF2 00 00 00    > BYTE 0, 0, 0
+1248  9CF5 00 00 00    > BYTE 0, 0, 0
+1248  9CF8 00 00 00    > BYTE 0, 0, 0
+1248  9CFB 00 00 00    > BYTE 0, 0, 0
+1249  9CFE 00           color_queue_i: BYTE 0
+1250  9CFF              variables_end:
+1251  9CFF              machine_stack:
+1252  9CFF 00          > BYTE 0
+1252  9D00 00          > BYTE 0
+1252  9D01 00          > BYTE 0
+1252  9D02 00          > BYTE 0
+1252  9D03 00          > BYTE 0
+1252  9D04 00          > BYTE 0
+1252  9D05 00          > BYTE 0
+1252  9D06 00          > BYTE 0
+1252  9D07 00          > BYTE 0
+1252  9D08 00          > BYTE 0
+1252  9D09 00          > BYTE 0
+1252  9D0A 00          > BYTE 0
+1252  9D0B 00          > BYTE 0
+1252  9D0C 00          > BYTE 0
+1252  9D0D 00          > BYTE 0
+1252  9D0E 00          > BYTE 0
+1252  9D0F 00          > BYTE 0
+1252  9D10 00          > BYTE 0
+1252  9D11 00          > BYTE 0
+1252  9D12 00          > BYTE 0
+1252  9D13 00          > BYTE 0
+1252  9D14 00          > BYTE 0
+1252  9D15 00          > BYTE 0
+1252  9D16 00          > BYTE 0
+1252  9D17 00          > BYTE 0
+1252  9D18 00          > BYTE 0
+1252  9D19 00          > BYTE 0
+1252  9D1A 00          > BYTE 0
+1252  9D1B 00          > BYTE 0
+1252  9D1C 00          > BYTE 0
+1252  9D1D 00          > BYTE 0
+1252  9D1E 00          > BYTE 0
+1252  9D1F 00          > BYTE 0
+1252  9D20 00          > BYTE 0
+1252  9D21 00          > BYTE 0
+1252  9D22 00          > BYTE 0
+1252  9D23 00          > BYTE 0
+1252  9D24 00          > BYTE 0
+1252  9D25 00          > BYTE 0
+1252  9D26 00          > BYTE 0
+1252  9D27 00          > BYTE 0
+1252  9D28 00          > BYTE 0
+1252  9D29 00          > BYTE 0
+1252  9D2A 00          > BYTE 0
+1252  9D2B 00          > BYTE 0
+1252  9D2C 00          > BYTE 0
+1252  9D2D 00          > BYTE 0
+1252  9D2E 00          > BYTE 0
+1252  9D2F 00          > BYTE 0
+1252  9D30 00          > BYTE 0
+1252  9D31 00          > BYTE 0
+1252  9D32 00          > BYTE 0
+1252  9D33 00          > BYTE 0
+1252  9D34 00          > BYTE 0
+1252  9D35 00          > BYTE 0
+1252  9D36 00          > BYTE 0
+1252  9D37 00          > BYTE 0
+1252  9D38 00          > BYTE 0
+1252  9D39 00          > BYTE 0
+1252  9D3A 00          > BYTE 0
+1252  9D3B 00          > BYTE 0
+1252  9D3C 00          > BYTE 0
+1252  9D3D 00          > BYTE 0
+1252  9D3E 00          > BYTE 0
+1252  9D3F 00          > BYTE 0
+1252  9D40 00          > BYTE 0
+1252  9D41 00          > BYTE 0
+1252  9D42 00          > BYTE 0
+1252  9D43 00          > BYTE 0
+1252  9D44 00          > BYTE 0
+1252  9D45 00          > BYTE 0
+1252  9D46 00          > BYTE 0
+1252  9D47 00          > BYTE 0
+1252  9D48 00          > BYTE 0
+1252  9D49 00          > BYTE 0
+1252  9D4A 00          > BYTE 0
+1252  9D4B 00          > BYTE 0
+1252  9D4C 00          > BYTE 0
+1252  9D4D 00          > BYTE 0
+1252  9D4E 00          > BYTE 0
+1252  9D4F 00          > BYTE 0
+1252  9D50 00          > BYTE 0
+1252  9D51 00          > BYTE 0
+1252  9D52 00          > BYTE 0
+1252  9D53 00          > BYTE 0
+1252  9D54 00          > BYTE 0
+1252  9D55 00          > BYTE 0
+1252  9D56 00          > BYTE 0
+1252  9D57 00          > BYTE 0
+1252  9D58 00          > BYTE 0
+1252  9D59 00          > BYTE 0
+1252  9D5A 00          > BYTE 0
+1252  9D5B 00          > BYTE 0
+1252  9D5C 00          > BYTE 0
+1252  9D5D 00          > BYTE 0
+1252  9D5E 00          > BYTE 0
+1252  9D5F 00          > BYTE 0
+1252  9D60 00          > BYTE 0
+1252  9D61 00          > BYTE 0
+1252  9D62 00          > BYTE 0
+1252  9D63 00          > BYTE 0
+1252  9D64 00          > BYTE 0
+1252  9D65 00          > BYTE 0
+1252  9D66 00          > BYTE 0
+1252  9D67 00          > BYTE 0
+1252  9D68 00          > BYTE 0
+1252  9D69 00          > BYTE 0
+1252  9D6A 00          > BYTE 0
+1252  9D6B 00          > BYTE 0
+1252  9D6C 00          > BYTE 0
+1252  9D6D 00          > BYTE 0
+1252  9D6E 00          > BYTE 0
+1252  9D6F 00          > BYTE 0
+1252  9D70 00          > BYTE 0
+1252  9D71 00          > BYTE 0
+1252  9D72 00          > BYTE 0
+1252  9D73 00          > BYTE 0
+1252  9D74 00          > BYTE 0
+1252  9D75 00          > BYTE 0
+1252  9D76 00          > BYTE 0
+1252  9D77 00          > BYTE 0
+1252  9D78 00          > BYTE 0
+1252  9D79 00          > BYTE 0
+1252  9D7A 00          > BYTE 0
+1252  9D7B 00          > BYTE 0
+1252  9D7C 00          > BYTE 0
+1252  9D7D 00          > BYTE 0
+1252  9D7E 00          > BYTE 0
+1253  9D7F              machine_stack_end:
+1254  9D7F
+1255  9D7F              	savesna "600_seconds.sna", start_demo
+1256  9D7F
+1257  9D7F              	org $4000
+1258  4000              basic_loader:
+1259  4000 00 0A 15 00  	db $00,$0a,$15,$00,$f5 ; PRINT
+1259  4004 F5
+1260  4005 22 63 75 73  	db $22,$63,$75,$73,$74,$6f,$6d,$20,$44,$49,$59,$20,$6c,$6f,$61,$64  ; "custom DIY load
+1260  4009 74 6F 6D 20
+1260  400D 44 49 59 20
+1260  4011 6C 6F 61 64
+1261  4015 65 72 22 0D  	db $65,$72,$22,$0d,$00,$14,$07,$00,$20,$ef,$22,$22,$20,$af,$0d,$00  ;
+1261  4019 00 14 07 00
+1261  401D 20 EF 22 22
+1261  4021 20 AF 0D 00
+1262  4025 1E 0F 00 20  	db $1e,$0f,$00,$20,$f9,$c0,$33,$32,$37,$36,$38,$0e,$00,$00,$00,$80  ; ... ..32768.....
+1262  4029 F9 C0 33 32
+1262  402D 37 36 38 0E
+1262  4031 00 00 00 80
+1263  4035 00 0D 80 0D  	db $00,$0d,$80,$0d,$80,$80,$00,$00,$00,$00,$00,$36,$38,$0e,$00,$00  ; ...........68...
+1263  4039 80 80 00 00
+1263  403D 00 00 00 36
+1263  4041 38 0E 00 00
+1264  4045              basic_loader_end:
+1265  4045              	EMPTYTAP "600_seconds.tap"
+1266  4045              	SAVETAP "600_seconds.tap",BASIC,"diy_loader",basic_loader,basic_loader_end - basic_loader, 10
+1267  4045              	SAVETAP "600_seconds.tap",CODE,"usr32768",start_demo,code_end - start_demo,start_demo
+1268  4045              	SAVEBIN "600_seconds.bin",start_demo,code_end - start_demo
+1269  4045
+# file closed: 600_seconds.asm
